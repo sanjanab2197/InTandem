@@ -1,0 +1,13 @@
+{
+  "buildCommand": "cd couple-planner && npm install && npm run build:web",
+  "outputDirectory": "couple-planner/dist",
+  "installCommand": "cd couple-planner && npm install",
+  "framework": null,
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/:path*",
+      "destination": "/"
+    }
+  ]
+}
