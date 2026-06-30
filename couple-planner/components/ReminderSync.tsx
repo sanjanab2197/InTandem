@@ -11,6 +11,13 @@ import {
   upsertCoupleReminder,
 } from '@/utils/remindersApi';
 
+const PUSH_DEBOUNCE_MS = 800;
+
+function logSyncError(label: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`[ReminderSync] ${label}:`, message);
+}
+
 export function useReminderRemoteActions() {
   const { user } = useAuth();
   const { couple } = useCouple();
@@ -22,8 +29,8 @@ export function useReminderRemoteActions() {
     try {
       const remote = await fetchCoupleReminders(coupleId);
       replaceRemindersFromRemote(remote);
-    } catch {
-      // Table may not exist yet — local reminders still work.
+    } catch (error) {
+      logSyncError('Pull failed — run supabase/reminders.sql in Supabase if table is missing', error);
     }
   }, [coupleId, replaceRemindersFromRemote]);
 
@@ -32,8 +39,8 @@ export function useReminderRemoteActions() {
     for (const reminder of reminders) {
       try {
         await upsertCoupleReminder(coupleId, user.id, reminder);
-      } catch {
-        // Continue syncing others.
+      } catch (error) {
+        logSyncError('Push reminder failed', error);
       }
     }
     await pullRemote();
@@ -44,20 +51,23 @@ export function useReminderRemoteActions() {
       if (!coupleId) return;
       try {
         await deleteCoupleReminder(reminderId);
-      } catch {
-        // Ignore.
+      } catch (error) {
+        logSyncError('Delete reminder failed', error);
       }
     },
     [coupleId]
   );
 
-  return { syncAllToRemote, removeRemote };
+  return { syncAllToRemote, removeRemote, pullRemote };
 }
 
 export default function ReminderSync() {
+  const { user } = useAuth();
   const { couple } = useCouple();
   const { reminders, setReminders, replaceRemindersFromRemote } = useApp();
   const syncingRef = useRef(false);
+  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipNextPushRef = useRef(false);
 
   const coupleId = couple?.connected ? couple.coupleId : undefined;
   const mySlot = couple?.mySlot ?? null;
@@ -85,12 +95,40 @@ export default function ReminderSync() {
     if (!coupleId || syncingRef.current) return;
     syncingRef.current = true;
     fetchCoupleReminders(coupleId)
-      .then(replaceRemindersFromRemote)
-      .catch(() => {})
+      .then((remote) => {
+        skipNextPushRef.current = true;
+        replaceRemindersFromRemote(remote);
+      })
+      .catch((error) => {
+        logSyncError('Pull failed', error);
+      })
       .finally(() => {
         syncingRef.current = false;
       });
   }, [coupleId, replaceRemindersFromRemote]);
+
+  useEffect(() => {
+    if (!coupleId || !user) return;
+    if (skipNextPushRef.current) {
+      skipNextPushRef.current = false;
+      return;
+    }
+
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    pushTimerRef.current = setTimeout(async () => {
+      for (const reminder of reminders) {
+        try {
+          await upsertCoupleReminder(coupleId, user.id, reminder);
+        } catch (error) {
+          logSyncError('Push failed', error);
+        }
+      }
+    }, PUSH_DEBOUNCE_MS);
+
+    return () => {
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    };
+  }, [coupleId, user, reminders]);
 
   return null;
 }

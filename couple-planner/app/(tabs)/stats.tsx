@@ -1,7 +1,6 @@
 import { addMonths, format, subMonths } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import CategoryRadialChart from '@/components/CategoryRadialChart';
 import { Theme } from '@/constants/Theme';
@@ -11,7 +10,6 @@ import { filterEventsByStatsView, firstName } from '@/utils/participant';
 import { computeCategoryStats, filterEventsForMonth } from '@/utils/stats';
 
 export default function StatsScreen() {
-  const insets = useSafeAreaInsets();
   const {
     events,
     eventCategories,
@@ -72,7 +70,7 @@ export default function StatsScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={styles.title}>

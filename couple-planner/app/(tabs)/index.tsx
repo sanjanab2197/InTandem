@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import CalendarGrid from '@/components/CalendarGrid';
 import EventCategoryManager from '@/components/EventCategoryManager';
@@ -9,7 +8,6 @@ import { Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 
 export default function CalendarScreen() {
-  const insets = useSafeAreaInsets();
   const {
     events,
     loading,
@@ -44,14 +42,14 @@ export default function CalendarScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.center, { paddingTop: insets.top }]}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color={Theme.primary} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerMain}>

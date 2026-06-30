@@ -1,6 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { Tabs } from 'expo-router';
 
+import AppHeaderBar from '@/components/AppHeaderBar';
 import { Theme } from '@/constants/Theme';
 
 export default function TabLayout() {
@@ -16,7 +17,8 @@ export default function TabLayout() {
           height: 88,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-        headerShown: false,
+        headerShown: true,
+        header: () => <AppHeaderBar />,
       }}>
       <Tabs.Screen
         name="index"

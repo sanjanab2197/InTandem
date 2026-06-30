@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   defaultSubcategoryKey,
@@ -139,14 +139,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<AppData>(DEFAULT_DATA);
   const [loading, setLoading] = useState(true);
   const [syncMeta, setSyncMeta] = useState<SyncMeta>(DEFAULT_SYNC_META);
+  const syncMetaRef = useRef<SyncMeta>(DEFAULT_SYNC_META);
+
+  useEffect(() => {
+    syncMetaRef.current = syncMeta;
+  }, [syncMeta]);
 
   useEffect(() => {
     Promise.all([AsyncStorage.getItem(STORAGE_KEY), AsyncStorage.getItem(SYNC_META_KEY)])
       .then(([stored, storedMeta]) => {
         if (storedMeta) {
           try {
-            setSyncMeta(JSON.parse(storedMeta) as SyncMeta);
+            const parsedMeta = JSON.parse(storedMeta) as SyncMeta;
+            syncMetaRef.current = parsedMeta;
+            setSyncMeta(parsedMeta);
           } catch {
+            syncMetaRef.current = DEFAULT_SYNC_META;
             setSyncMeta(DEFAULT_SYNC_META);
           }
         }
@@ -172,22 +180,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const bumpLocalChange = useCallback(() => {
     const next: SyncMeta = {
-      ...syncMeta,
+      ...syncMetaRef.current,
       lastLocalChangeAt: new Date().toISOString(),
     };
+    syncMetaRef.current = next;
     setSyncMeta(next);
     AsyncStorage.setItem(SYNC_META_KEY, JSON.stringify(next));
-  }, [syncMeta]);
+  }, []);
 
   const persist = useCallback(
-    (updater: AppData | ((prev: AppData) => AppData)) => {
+    (updater: AppData | ((prev: AppData) => AppData), options?: { fromRemote?: boolean }) => {
       setData((prev) => {
         const next = typeof updater === 'function' ? updater(prev) : updater;
-        if (hasSyncableChange(prev, next)) {
+        if (!options?.fromRemote && hasSyncableChange(prev, next)) {
           const meta: SyncMeta = {
-            ...syncMeta,
+            ...syncMetaRef.current,
             lastLocalChangeAt: new Date().toISOString(),
           };
+          syncMetaRef.current = meta;
           setSyncMeta(meta);
           AsyncStorage.setItem(SYNC_META_KEY, JSON.stringify(meta));
         }
@@ -195,7 +205,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
     },
-    [syncMeta]
+    []
   );
 
   const addEvent = useCallback(
@@ -386,7 +396,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     (payload: AppStatePayload) => {
       persist((prev) => {
         const eventCategories = mergeEventCategories(payload.eventCategories ?? prev.eventCategories);
-        return {
+        const next = {
           ...prev,
           events: payload.events,
           planItems: payload.planItems,
@@ -398,7 +408,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             ...payload.weeklyGoals,
           }),
         };
-      });
+        if (!hasSyncableChange(prev, next)) {
+          return prev;
+        }
+        return next;
+      }, { fromRemote: true });
     },
     [persist]
   );
@@ -412,19 +426,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       planSubcategories: mergePlanSubcategories(data.planSubcategories),
       eventCategories,
       weeklyGoals: syncWeeklyGoals(eventCategories, data.weeklyGoals),
-      updatedAt: syncMeta.lastLocalChangeAt,
+      updatedAt: syncMetaRef.current.lastLocalChangeAt,
     };
-  }, [data, syncMeta.lastLocalChangeAt]);
+  }, [data]);
 
   const touchAppStateChange = useCallback(() => {
     bumpLocalChange();
   }, [bumpLocalChange]);
 
-  const getSyncMeta = useCallback(() => syncMeta, [syncMeta]);
+  const getSyncMeta = useCallback(() => syncMetaRef.current, []);
 
   const setLastAppliedRemoteAt = useCallback((iso: string) => {
     setSyncMeta((prev) => {
       const next: SyncMeta = { ...prev, lastAppliedRemoteAt: iso };
+      syncMetaRef.current = next;
       AsyncStorage.setItem(SYNC_META_KEY, JSON.stringify(next));
       return next;
     });
@@ -704,7 +719,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfile = useCallback(
     (profile: CoupleProfile) => {
-      persist((prev) => ({ ...prev, profile }));
+      persist((prev) => {
+        if (
+          prev.profile.partner1Name === profile.partner1Name &&
+          prev.profile.partner2Name === profile.partner2Name &&
+          prev.profile.anniversary === profile.anniversary &&
+          prev.profile.bio === profile.bio
+        ) {
+          return prev;
+        }
+        return { ...prev, profile };
+      });
     },
     [persist]
   );

@@ -9,9 +9,14 @@ import {
   upsertCoupleAppState,
   upsertUserAppState,
 } from '@/utils/appStateApi';
-import { isEmptyAppState, mergeAppStatePayload, pickNewerAppState } from '@/utils/appStateMerge';
+import { isEmptyAppState, resolveAppStateOnPull } from '@/utils/appStateMerge';
 
-const PUSH_DEBOUNCE_MS = 1500;
+const PUSH_DEBOUNCE_MS = 800;
+
+function logSyncError(label: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`[AppDataSync] ${label}:`, message);
+}
 
 export default function AppDataSync() {
   const { user } = useAuth();
@@ -35,6 +40,28 @@ export default function AppDataSync() {
   const pullingRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextPushRef = useRef(false);
+  const lastPushErrorRef = useRef<string | null>(null);
+
+  const pushToRemote = useCallback(async () => {
+    if (!userId) return;
+
+    const payload = getAppStatePayload();
+    try {
+      if (coupleId) {
+        await upsertCoupleAppState(coupleId, userId, payload);
+      } else {
+        await upsertUserAppState(userId, payload);
+      }
+      lastPushErrorRef.current = null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (lastPushErrorRef.current !== message) {
+        lastPushErrorRef.current = message;
+        logSyncError('Push failed', error);
+      }
+      throw error;
+    }
+  }, [coupleId, userId, getAppStatePayload]);
 
   const pullRemote = useCallback(async () => {
     if (!userId || pullingRef.current) return;
@@ -45,59 +72,43 @@ export default function AppDataSync() {
       const syncMeta = getSyncMeta();
 
       if (coupleId) {
-        let remote = await fetchCoupleAppState(coupleId);
-        if (!remote) {
-          await upsertCoupleAppState(coupleId, userId, local);
-          return;
-        }
+        const remote = await fetchCoupleAppState(coupleId);
+        const resolved = resolveAppStateOnPull(local, remote, syncMeta.lastLocalChangeAt);
 
-        const localChangedAfterRemote =
-          new Date(syncMeta.lastLocalChangeAt).getTime() >
-          new Date(remote.updatedAt ?? 0).getTime();
-
-        if (localChangedAfterRemote && !isEmptyAppState(local)) {
-          const merged = mergeAppStatePayload(local, remote);
-          await upsertCoupleAppState(coupleId, userId, merged);
+        if (resolved.action === 'upsert') {
+          if (!isEmptyAppState(resolved.payload) || !remote) {
+            await upsertCoupleAppState(coupleId, userId, resolved.payload);
+          }
           skipNextPushRef.current = true;
-          replaceAppStateFromRemote(merged);
-          if (merged.updatedAt) setLastAppliedRemoteAt(merged.updatedAt);
+          replaceAppStateFromRemote(resolved.payload);
+          setLastAppliedRemoteAt(resolved.payload.updatedAt ?? new Date().toISOString());
           return;
         }
 
-        const chosen = pickNewerAppState(local, remote);
         skipNextPushRef.current = true;
-        replaceAppStateFromRemote(chosen);
-        if (remote.updatedAt) setLastAppliedRemoteAt(remote.updatedAt);
+        replaceAppStateFromRemote(resolved.payload);
+        setLastAppliedRemoteAt(resolved.payload.updatedAt ?? new Date().toISOString());
         return;
       }
 
-      let remote = await fetchUserAppState(userId);
-      if (!remote) {
-        if (!isEmptyAppState(local)) {
-          await upsertUserAppState(userId, local);
+      const remote = await fetchUserAppState(userId);
+      const resolved = resolveAppStateOnPull(local, remote, syncMeta.lastLocalChangeAt);
+
+      if (resolved.action === 'upsert') {
+        if (!isEmptyAppState(resolved.payload) || !remote) {
+          await upsertUserAppState(userId, resolved.payload);
         }
-        return;
-      }
-
-      const localChangedAfterRemote =
-        new Date(syncMeta.lastLocalChangeAt).getTime() >
-        new Date(remote.updatedAt ?? 0).getTime();
-
-      if (localChangedAfterRemote && !isEmptyAppState(local)) {
-        const merged = mergeAppStatePayload(local, remote);
-        await upsertUserAppState(userId, merged);
         skipNextPushRef.current = true;
-        replaceAppStateFromRemote(merged);
-        if (merged.updatedAt) setLastAppliedRemoteAt(merged.updatedAt);
+        replaceAppStateFromRemote(resolved.payload);
+        setLastAppliedRemoteAt(resolved.payload.updatedAt ?? new Date().toISOString());
         return;
       }
 
-      const chosen = pickNewerAppState(local, remote);
       skipNextPushRef.current = true;
-      replaceAppStateFromRemote(chosen);
-      if (remote.updatedAt) setLastAppliedRemoteAt(remote.updatedAt);
-    } catch {
-      // Tables may not exist yet — local data still works.
+      replaceAppStateFromRemote(resolved.payload);
+      setLastAppliedRemoteAt(resolved.payload.updatedAt ?? new Date().toISOString());
+    } catch (error) {
+      logSyncError('Pull failed — run supabase/app_state.sql in Supabase if tables are missing', error);
     } finally {
       pullingRef.current = false;
     }
@@ -123,17 +134,10 @@ export default function AppDataSync() {
     }
 
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
-    pushTimerRef.current = setTimeout(async () => {
-      try {
-        const payload = getAppStatePayload();
-        if (coupleId) {
-          await upsertCoupleAppState(coupleId, userId, payload);
-        } else {
-          await upsertUserAppState(userId, payload);
-        }
-      } catch {
-        // Ignore — will retry on next change.
-      }
+    pushTimerRef.current = setTimeout(() => {
+      pushToRemote().catch(() => {
+        // Logged in pushToRemote; retry on next change.
+      });
     }, PUSH_DEBOUNCE_MS);
 
     return () => {
@@ -149,7 +153,7 @@ export default function AppDataSync() {
     planSubcategories,
     eventCategories,
     weeklyGoals,
-    getAppStatePayload,
+    pushToRemote,
   ]);
 
   return null;

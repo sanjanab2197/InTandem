@@ -11,7 +11,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Theme } from '@/constants/Theme';
 import { useAuth } from '@/context/AuthContext';
@@ -19,7 +18,6 @@ import { useCouple } from '@/context/CoupleContext';
 import { sendInviteViaEmail } from '@/utils/coupleApi';
 
 export default function ProfileScreen() {
-  const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
   const { couple, loading: coupleLoading, error: coupleError, refresh, joinWithCode, removePartner, saveDisplayName, saveCoupleDetails } =
     useCouple();
@@ -133,7 +131,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View>
           <Text style={styles.title}>

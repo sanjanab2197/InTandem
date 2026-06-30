@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import CategoryDropdown from '@/components/CategoryDropdown';
 import ChecklistView from '@/components/ChecklistView';
@@ -25,7 +24,6 @@ const CATEGORY_HINTS: Record<PlanCategory, string> = {
 };
 
 export default function PlansScreen() {
-  const insets = useSafeAreaInsets();
   const { couple } = useCouple();
   const { syncAllToRemote, removeRemote } = useReminderRemoteActions();
   const {
@@ -87,7 +85,7 @@ export default function PlansScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}

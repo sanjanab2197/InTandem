@@ -103,3 +103,32 @@ export function pickNewerAppState(local: AppStatePayload, remote: AppStatePayloa
   if (localTime > remoteTime) return local;
   return mergeAppStatePayload(local, remote);
 }
+
+/** Prefer local when remote is empty but local has data — avoids wiping unsynced entries. */
+export function resolveAppStateOnPull(
+  local: AppStatePayload,
+  remote: AppStatePayload | null,
+  lastLocalChangeAt: string
+): { action: 'upsert'; payload: AppStatePayload } | { action: 'apply'; payload: AppStatePayload } {
+  if (!remote) {
+    return { action: 'upsert', payload: local };
+  }
+
+  if (!isEmptyAppState(local) && isEmptyAppState(remote)) {
+    return { action: 'upsert', payload: mergeAppStatePayload(local, remote) };
+  }
+
+  const localChangedAfterRemote =
+    new Date(lastLocalChangeAt).getTime() > new Date(remote.updatedAt ?? 0).getTime();
+
+  if (localChangedAfterRemote && !isEmptyAppState(local)) {
+    return { action: 'upsert', payload: mergeAppStatePayload(local, remote) };
+  }
+
+  const chosen = pickNewerAppState(local, remote);
+  if (!isEmptyAppState(local) && isEmptyAppState(chosen)) {
+    return { action: 'upsert', payload: mergeAppStatePayload(local, remote) };
+  }
+
+  return { action: 'apply', payload: chosen };
+}

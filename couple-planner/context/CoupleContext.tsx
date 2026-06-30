@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
@@ -42,6 +42,7 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
   const [couple, setCouple] = useState<CoupleConnection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadedForUserRef = useRef<string | null>(null);
 
   const syncLocalProfile = useCallback(
     (next: CoupleConnection) => {
@@ -60,15 +61,21 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
       setCouple(null);
       setError(null);
       setLoading(false);
+      loadedForUserRef.current = null;
       return;
     }
 
-    setLoading(true);
+    const isInitialLoad = loadedForUserRef.current !== user.id;
+    if (isInitialLoad) {
+      setLoading(true);
+    }
     setError(null);
+
     try {
       const data = await fetchMyCouple(user);
       setCouple(data);
       syncLocalProfile(data);
+      loadedForUserRef.current = user.id;
     } catch (e) {
       setCouple(null);
       setError(e instanceof Error ? e.message : 'Could not load profile');
@@ -77,13 +84,20 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, syncLocalProfile]);
 
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
   useEffect(() => {
     if (!user) {
       setCouple(null);
       setError(null);
       setLoading(false);
+      loadedForUserRef.current = null;
       return;
     }
+
+    loadedForUserRef.current = null;
+    setLoading(true);
 
     let cancelled = false;
 
@@ -104,7 +118,7 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (!cancelled) {
-          await refresh();
+          await refreshRef.current();
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -114,7 +128,7 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user, refresh]);
+  }, [user?.id]);
 
   const value = useMemo<CoupleContextValue>(
     () => ({
