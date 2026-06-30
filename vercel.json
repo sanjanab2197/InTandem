@@ -1,13 +1,12 @@
 {
-  "buildCommand": "cd couple-planner && npm install && npm run build:web",
+  "buildCommand": "cd couple-planner && npm install && npx expo export -p web",
   "outputDirectory": "couple-planner/dist",
   "installCommand": "cd couple-planner && npm install",
   "framework": null,
-  "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/:path*",
-      "destination": "/"
+      "source": "/((?!_expo/|assets/|favicon\\.ico).*)",
+      "destination": "/index.html"
     }
   ]
 }

@@ -45,5 +45,8 @@
     "web": "expo start --web",
     "build:web": "expo export -p web"
   },
-  "private": true
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
 }
