@@ -4,20 +4,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Theme } from '@/constants/Theme';
 
-function getTabLabel(pathname: string): string {
-  if (pathname.includes('plans')) return 'Planner';
-  if (pathname.includes('stats')) return 'Stats';
-  if (pathname.includes('profile')) return 'Profile';
-  return 'Schedule';
-}
-
 export default function AppHeaderBar() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
 
   const isCalendar = pathname === '/' || pathname === '/index' || pathname.endsWith('/index');
-  const tabLabel = getTabLabel(pathname);
 
   const goToCalendar = () => {
     if (!isCalendar) {
@@ -46,10 +38,6 @@ export default function AppHeaderBar() {
             </Text>
           </View>
         </Pressable>
-
-        <View style={styles.tabBadge}>
-          <Text style={styles.tabBadgeText}>{tabLabel}</Text>
-        </View>
       </View>
 
       <View style={styles.bottomRule} />
@@ -73,9 +61,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingBottom: 14,
-    gap: 12,
   },
   brandBtn: {
     flexDirection: 'row',
@@ -117,20 +103,6 @@ const styles = StyleSheet.create({
   },
   brandAccent: {
     color: Theme.primary,
-  },
-  tabBadge: {
-    backgroundColor: Theme.primaryLight,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E2D6F5',
-  },
-  tabBadgeText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    color: Theme.primaryDark,
-    letterSpacing: 0.2,
   },
   bottomRule: {
     height: 3,
