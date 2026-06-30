@@ -10,6 +10,7 @@ interface ReminderRow {
   assignee: string;
   completed: boolean;
   repeat_interval?: string | null;
+  updated_at?: string | null;
 }
 
 const VALID_REPEATS: ReminderRepeat[] = [
@@ -37,6 +38,7 @@ function rowToReminder(row: ReminderRow): Reminder {
     completed: row.completed,
     repeat: parseRepeat(row.repeat_interval),
     createdBy: row.created_by,
+    updatedAt: row.updated_at ?? undefined,
   };
 }
 

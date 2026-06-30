@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useCouple } from '@/context/CoupleContext';
+import { Reminder } from '@/types';
 import { syncAllReminderNotifications } from '@/utils/reminderNotifications';
 import {
   deleteCoupleReminder,
@@ -23,6 +24,8 @@ export function useReminderRemoteActions() {
   const { couple } = useCouple();
   const { reminders, replaceRemindersFromRemote } = useApp();
   const coupleId = couple?.connected ? couple.coupleId : undefined;
+  const remindersRef = useRef(reminders);
+  remindersRef.current = reminders;
 
   const pullRemote = useCallback(async () => {
     if (!coupleId) return;
@@ -34,17 +37,29 @@ export function useReminderRemoteActions() {
     }
   }, [coupleId, replaceRemindersFromRemote]);
 
+  const pushReminder = useCallback(
+    async (reminder: Reminder) => {
+      if (!coupleId || !user) return;
+      try {
+        await upsertCoupleReminder(coupleId, user.id, reminder);
+      } catch (error) {
+        logSyncError('Push reminder failed', error);
+        throw error;
+      }
+    },
+    [coupleId, user]
+  );
+
   const syncAllToRemote = useCallback(async () => {
     if (!coupleId || !user) return;
-    for (const reminder of reminders) {
+    for (const reminder of remindersRef.current) {
       try {
         await upsertCoupleReminder(coupleId, user.id, reminder);
       } catch (error) {
         logSyncError('Push reminder failed', error);
       }
     }
-    await pullRemote();
-  }, [coupleId, user, reminders, pullRemote]);
+  }, [coupleId, user]);
 
   const removeRemote = useCallback(
     async (reminderId: string) => {
@@ -58,7 +73,7 @@ export function useReminderRemoteActions() {
     [coupleId]
   );
 
-  return { syncAllToRemote, removeRemote, pullRemote };
+  return { syncAllToRemote, pushReminder, removeRemote, pullRemote };
 }
 
 export default function ReminderSync() {

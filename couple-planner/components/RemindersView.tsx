@@ -42,7 +42,7 @@ interface RemindersViewProps {
   addReminder: (input: AddReminderInput) => Promise<Reminder>;
   updateReminder: (reminder: Reminder) => Promise<void>;
   deleteReminder: (id: string) => Promise<void>;
-  completeReminder: (id: string) => Promise<void>;
+  pushReminder?: (reminder: Reminder) => Promise<void>;
   onSaved?: () => void;
   onDeleted?: (id: string) => void;
 }
@@ -53,7 +53,7 @@ export default function RemindersView({
   addReminder,
   updateReminder,
   deleteReminder,
-  completeReminder,
+  pushReminder,
   onSaved,
   onDeleted,
 }: RemindersViewProps) {
@@ -86,12 +86,10 @@ export default function RemindersView({
   }, [reminders]);
 
   const upcoming = sorted.filter(
-    (r) =>
-      !r.completed &&
-      (isRepeatingReminder(r.repeat) || !isPast(parseISO(r.remindAt)))
+    (r) => isRepeatingReminder(r.repeat) || !isPast(parseISO(r.remindAt))
   );
   const past = sorted.filter(
-    (r) => r.completed || (!isRepeatingReminder(r.repeat) && isPast(parseISO(r.remindAt)))
+    (r) => !isRepeatingReminder(r.repeat) && isPast(parseISO(r.remindAt))
   );
 
   const { accent, accentDark, accentLight, accentMuted } = theme;
@@ -160,19 +158,28 @@ export default function RemindersView({
     };
 
     if (editing) {
-      await updateReminder({ ...editing, ...payload });
+      const saved = await updateReminder({ ...editing, ...payload });
+      if (pushReminder) {
+        await pushReminder(saved);
+      } else {
+        onSaved?.();
+      }
     } else {
-      await addReminder(payload);
+      const created = await addReminder(payload);
+      if (pushReminder) {
+        await pushReminder(created);
+      } else {
+        onSaved?.();
+      }
     }
 
-    onSaved?.();
     resetForm();
   };
 
   const renderReminder = (reminder: Reminder) => {
     const when = parseISO(reminder.remindAt);
     const repeating = isRepeatingReminder(reminder.repeat);
-    const overdue = !reminder.completed && !repeating && isPast(when);
+    const overdue = !repeating && isPast(when);
     const repeatNote = repeatLabel(reminder.repeat);
 
     return (
@@ -180,21 +187,16 @@ export default function RemindersView({
         <Pressable
           style={styles.checkArea}
           onPress={async () => {
-            await completeReminder(reminder.id);
-            onSaved?.();
+            if (editing?.id === reminder.id) {
+              resetForm();
+            }
+            await deleteReminder(reminder.id);
+            await onDeleted?.(reminder.id);
           }}>
-          <View
-            style={[
-              styles.checkbox,
-              { borderColor: accent },
-              reminder.completed && { backgroundColor: accent, borderColor: accent },
-            ]}>
-            {reminder.completed && <Text style={styles.checkmark}>✓</Text>}
+          <View style={[styles.checkbox, { borderColor: accent }]}>
           </View>
           <View style={styles.cardBody}>
-            <Text style={[styles.cardText, reminder.completed && styles.cardTextDone]}>
-              {reminder.text}
-            </Text>
+            <Text style={styles.cardText}>{reminder.text}</Text>
             <Text style={[styles.cardWhen, { color: accent }, overdue && styles.cardOverdue]}>
               {formatReminderSchedule(when, reminder.repeat)}
               {overdue ? ' · overdue' : ''}

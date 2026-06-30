@@ -38,6 +38,7 @@ import {
   cancelReminderNotification,
 } from '@/utils/reminderNotifications';
 import { pruneOldSettledExpenses } from '@/utils/expenseHistory';
+import { touchReminder, mergeReminders } from '@/utils/reminderMerge';
 
 const STORAGE_KEY = '@together_app_data';
 const SYNC_META_KEY = '@together_sync_meta';
@@ -109,9 +110,9 @@ interface AppContextValue {
   updatePlanSubcategory: (category: PlanCategory, key: string, label: string) => void;
   deletePlanSubcategory: (category: PlanCategory, key: string) => void;
   addReminder: (input: AddReminderInput, mySlot?: 1 | 2 | null) => Promise<Reminder>;
-  updateReminder: (reminder: Reminder, mySlot?: 1 | 2 | null) => Promise<void>;
+  updateReminder: (reminder: Reminder, mySlot?: 1 | 2 | null) => Promise<Reminder>;
   deleteReminder: (id: string) => Promise<void>;
-  completeReminder: (id: string) => Promise<void>;
+  completeReminder: (id: string) => Promise<Reminder | null>;
   setReminders: (reminders: Reminder[]) => void;
   replaceRemindersFromRemote: (reminders: Reminder[]) => void;
   replaceAppStateFromRemote: (payload: AppStatePayload) => void;
@@ -381,13 +382,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const replaceRemindersFromRemote = useCallback(
     (remote: Reminder[]) => {
-      persist((prev) => {
-        const localOnly = prev.reminders.filter((r) => !remote.some((x) => x.id === r.id));
-        const merged = [...remote, ...localOnly].sort(
-          (a, b) => new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime()
-        );
-        return { ...prev, reminders: merged };
-      });
+      persist((prev) => ({
+        ...prev,
+        reminders: mergeReminders(prev.reminders, remote),
+      }));
     },
     [persist]
   );
@@ -447,14 +445,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addReminder = useCallback(
     async (input: AddReminderInput, mySlot?: 1 | 2 | null) => {
-      let created: Reminder = {
+      let created: Reminder = touchReminder({
         id: generateId(),
         text: input.text,
         remindAt: input.remindAt,
         assignee: input.assignee,
         repeat: input.repeat ?? 'none',
         completed: false,
-      };
+      });
       const notificationId = await applyReminderNotification(created, mySlot);
       created = { ...created, notificationId };
 
@@ -469,12 +467,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateReminder = useCallback(
     async (reminder: Reminder, mySlot?: 1 | 2 | null) => {
-      const notificationId = await applyReminderNotification(reminder, mySlot);
-      const next = { ...reminder, notificationId };
+      const touched = touchReminder(reminder);
+      const notificationId = await applyReminderNotification(touched, mySlot);
+      const next = { ...touched, notificationId };
       persist((prev) => ({
         ...prev,
         reminders: prev.reminders.map((r) => (r.id === next.id ? next : r)),
       }));
+      return next;
     },
     [persist]
   );
@@ -494,14 +494,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const completeReminder = useCallback(
     async (id: string) => {
       const existing = data.reminders.find((r) => r.id === id);
-      if (!existing) return;
+      if (!existing) return null;
       await cancelReminderNotification(existing.notificationId);
+      const updated = touchReminder({
+        ...existing,
+        completed: !existing.completed,
+        notificationId: undefined,
+      });
       persist((prev) => ({
         ...prev,
-        reminders: prev.reminders.map((r) =>
-          r.id === id ? { ...r, completed: !r.completed, notificationId: undefined } : r
-        ),
+        reminders: prev.reminders.map((r) => (r.id === id ? updated : r)),
       }));
+      return updated;
     },
     [persist, data.reminders]
   );

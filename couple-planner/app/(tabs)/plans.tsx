@@ -25,7 +25,7 @@ const CATEGORY_HINTS: Record<PlanCategory, string> = {
 
 export default function PlansScreen() {
   const { couple } = useCouple();
-  const { syncAllToRemote, removeRemote } = useReminderRemoteActions();
+  const { syncAllToRemote, pushReminder, removeRemote } = useReminderRemoteActions();
   const {
     addPlanItem,
     updatePlanItem,
@@ -39,7 +39,6 @@ export default function PlansScreen() {
     addReminder,
     updateReminder,
     deleteReminder,
-    completeReminder,
     addExpense,
     updateExpense,
     deleteExpense,
@@ -153,11 +152,10 @@ export default function PlansScreen() {
             addReminder={(input) => addReminder(input, mySlot)}
             updateReminder={(reminder) => updateReminder(reminder, mySlot)}
             deleteReminder={deleteReminder}
-            completeReminder={completeReminder}
+            pushReminder={pushReminder}
             onSaved={syncAllToRemote}
             onDeleted={async (id) => {
               await removeRemote(id);
-              await syncAllToRemote();
             }}
           />
         ) : isExpenseflow ? (

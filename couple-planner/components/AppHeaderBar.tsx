@@ -18,14 +18,14 @@ export default function AppHeaderBar() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 6 }]}>
-      <View style={styles.row}>
+    <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+      <View style={styles.inner}>
         <Pressable
           style={({ pressed }) => [styles.brandBtn, pressed && styles.brandBtnPressed]}
           onPress={goToCalendar}
           accessibilityRole="button"
           accessibilityLabel="InTandem home, go to calendar">
-          <View style={styles.iconWrap}>
+          <View style={styles.iconHalo}>
             <Image
               source={require('@/assets/images/intandem-icon.png')}
               style={styles.icon}
@@ -36,78 +36,71 @@ export default function AppHeaderBar() {
             <Text style={styles.brand}>
               In<Text style={styles.brandAccent}>Tandem</Text>
             </Text>
+            <View style={styles.brandUnderline} />
           </View>
         </Pressable>
       </View>
-
-      <View style={styles.bottomRule} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FDFBFF',
-    paddingBottom: 0,
+    backgroundColor: Theme.surface,
+    paddingBottom: 14,
     paddingHorizontal: 20,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.border,
-    shadowColor: Theme.primaryDark,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
   },
-  row: {
+  inner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 14,
   },
   brandBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    flex: 1,
-    borderRadius: 16,
-    paddingVertical: 4,
-    paddingRight: 8,
-    marginLeft: -4,
+    gap: 14,
+    borderRadius: 18,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    marginLeft: -8,
   },
   brandBtnPressed: {
-    opacity: 0.75,
-  },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
     backgroundColor: Theme.primaryLight,
+  },
+  iconHalo: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: 'rgba(139, 111, 212, 0.14)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2D6F5',
+    borderColor: 'rgba(139, 111, 212, 0.2)',
   },
   icon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 11,
   },
   brandText: {
-    flex: 1,
+    gap: 6,
   },
   brand: {
     fontFamily: 'Inter_700Bold',
-    fontSize: 24,
-    letterSpacing: -0.6,
+    fontSize: 26,
+    letterSpacing: -0.7,
     color: Theme.text,
-    lineHeight: 28,
+    lineHeight: 30,
   },
   brandAccent: {
     color: Theme.primary,
   },
-  bottomRule: {
+  brandUnderline: {
+    width: 36,
     height: 3,
-    marginHorizontal: -20,
+    borderRadius: 2,
     backgroundColor: Theme.primary,
-    opacity: 0.35,
+    opacity: 0.55,
   },
 });

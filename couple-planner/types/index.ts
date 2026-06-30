@@ -92,6 +92,7 @@ export interface Reminder {
   repeat?: ReminderRepeat;
   notificationId?: string;
   createdBy?: string;
+  updatedAt?: string;
 }
 
 export interface AddReminderInput {
