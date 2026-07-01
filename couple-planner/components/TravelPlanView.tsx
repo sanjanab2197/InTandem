@@ -1,18 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 
-import ChipPicker from '@/components/ChipPicker';
+import ChecklistListDropdown from '@/components/ChecklistListDropdown';
+import ChecklistView from '@/components/ChecklistView';
+import PlanSectionHeader from '@/components/PlanSectionHeader';
 import { PlanCategoryTheme, PlansUI } from '@/constants/plansTheme';
 import { Theme } from '@/constants/Theme';
-import { AddPlanItemInput, PlanItem, PlanSubcategory } from '@/types';
+import { AddPlanItemInput, PlanCategory, PlanItem, PlanSubcategory } from '@/types';
 
 interface TravelPlanViewProps {
   items: PlanItem[];
@@ -22,7 +23,9 @@ interface TravelPlanViewProps {
   onAdd: (input: AddPlanItemInput) => void;
   onEdit: (item: PlanItem) => void;
   onDelete: (id: string) => void;
+  onClearCompleted: (tripName: string, sectionKey: string) => void;
   onEditSections?: () => void;
+  onViewChange?: (view: 'grid' | 'detail') => void;
 }
 
 function normalizeSection(key?: string): string {
@@ -30,9 +33,7 @@ function normalizeSection(key?: string): string {
   return key;
 }
 
-type TripSummary = {
-  name: string;
-};
+type TripSummary = { name: string };
 
 export default function TravelPlanView({
   items,
@@ -42,13 +43,22 @@ export default function TravelPlanView({
   onAdd,
   onEdit,
   onDelete,
+  onClearCompleted,
   onEditSections,
+  onViewChange,
 }: TravelPlanViewProps) {
   const accent = theme.accent;
   const accentDark = theme.accentDark;
   const accentLight = theme.accentLight;
 
+  const [selectedTrip, setSelectedTrip] = useState<string | null>(null);
   const [draftTrips, setDraftTrips] = useState<string[]>([]);
+  const [sectionByTrip, setSectionByTrip] = useState<Record<string, string>>({});
+  const [showNewTrip, setShowNewTrip] = useState(false);
+  const [newTripName, setNewTripName] = useState('');
+  const [editingTripName, setEditingTripName] = useState<string | null>(null);
+  const [editTripNameText, setEditTripNameText] = useState('');
+  const [deleteTripTarget, setDeleteTripTarget] = useState<string | null>(null);
 
   const tripSummaries = useMemo((): TripSummary[] => {
     const names = new Set<string>();
@@ -62,48 +72,53 @@ export default function TravelPlanView({
       .map((name) => ({ name }));
   }, [items, draftTrips]);
 
-  const [selectedTrip, setSelectedTrip] = useState<string | null>(null);
-  const [sectionFilter, setSectionFilter] = useState('all');
-  const [showNewTrip, setShowNewTrip] = useState(false);
-  const [newTripName, setNewTripName] = useState('');
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [addText, setAddText] = useState('');
-  const [addSection, setAddSection] = useState(sections[0]?.key ?? 'places');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState('');
-  const [editSection, setEditSection] = useState(sections[0]?.key ?? 'places');
-  const [deleteTarget, setDeleteTarget] = useState<PlanItem | null>(null);
-  const [editingTripName, setEditingTripName] = useState<string | null>(null);
-  const [editTripNameText, setEditTripNameText] = useState('');
-  const [deleteTripTarget, setDeleteTripTarget] = useState<string | null>(null);
+  const firstSectionKey = sections[0]?.key ?? 'places';
 
-  const tripItems = useMemo(() => {
-    if (!selectedTrip) return [];
-    return items.filter((item) => item.tripName?.trim() === selectedTrip);
-  }, [items, selectedTrip]);
-
-  const filteredItems = useMemo(() => {
-    if (sectionFilter === 'all') return tripItems;
-    return tripItems.filter((item) => normalizeSection(item.subcategory) === sectionFilter);
-  }, [tripItems, sectionFilter]);
-
-  const sectionLabel = (key?: string) =>
-    sections.find((s) => s.key === normalizeSection(key))?.label ??
-    (key === 'itinerary' || key === 'ideas' ? 'Places to Visit' : key?.replace(/_/g, ' '));
-
-  const openTrip = (name: string) => {
-    setSelectedTrip(name);
-    setSectionFilter('all');
-    setShowAddForm(false);
-    setEditingId(null);
+  const getSectionForTrip = (tripName: string) => {
+    const current = sectionByTrip[tripName];
+    if (current && sections.some((s) => s.key === current)) return current;
+    return firstSectionKey;
   };
 
-  const closeTrip = () => {
-    setSelectedTrip(null);
-    setSectionFilter('all');
-    setShowAddForm(false);
-    setEditingId(null);
+  const setSectionForTrip = (tripName: string, key: string) => {
+    setSectionByTrip((prev) => ({ ...prev, [tripName]: key }));
   };
+
+  useEffect(() => {
+    setSectionByTrip((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const { name } of tripSummaries) {
+        const current = next[name];
+        if (!current || !sections.some((s) => s.key === current)) {
+          next[name] = firstSectionKey;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [tripSummaries, sections, firstSectionKey]);
+
+  useEffect(() => {
+    if (selectedTrip && !tripSummaries.some((t) => t.name === selectedTrip)) {
+      setSelectedTrip(null);
+      setEditingTripName(null);
+    }
+  }, [selectedTrip, tripSummaries]);
+
+  useEffect(() => {
+    onViewChange?.(selectedTrip ? 'detail' : 'grid');
+  }, [selectedTrip, onViewChange]);
+
+  useEffect(() => {
+    return () => onViewChange?.('grid');
+  }, [onViewChange]);
+
+  const itemsForTripSection = (tripName: string, sectionKey: string) =>
+    items.filter((item) => {
+      if (item.tripName?.trim() !== tripName) return false;
+      return normalizeSection(item.subcategory) === sectionKey;
+    });
 
   const confirmNewTrip = () => {
     const name = newTripName.trim();
@@ -111,13 +126,12 @@ export default function TravelPlanView({
     setDraftTrips((prev) => (prev.includes(name) ? prev : [...prev, name]));
     setNewTripName('');
     setShowNewTrip(false);
-    openTrip(name);
+    setSelectedTrip(name);
   };
 
   const startEditTrip = (name: string) => {
     setEditingTripName(name);
     setEditTripNameText(name);
-    setShowNewTrip(false);
   };
 
   const cancelEditTrip = () => {
@@ -140,6 +154,12 @@ export default function TravelPlanView({
       const next = prev.map((n) => (n === oldName ? trimmed : n));
       return next.filter((n, i) => next.indexOf(n) === i);
     });
+    setSectionByTrip((prev) => {
+      if (!(oldName in prev)) return prev;
+      const { [oldName]: section, ...rest } = prev;
+      return { ...rest, [trimmed]: section };
+    });
+    if (selectedTrip === oldName) setSelectedTrip(trimmed);
     cancelEditTrip();
   };
 
@@ -148,346 +168,209 @@ export default function TravelPlanView({
       .filter((item) => item.tripName?.trim() === name)
       .forEach((item) => onDelete(item.id));
     setDraftTrips((prev) => prev.filter((n) => n !== name));
+    setSectionByTrip((prev) => {
+      if (!(name in prev)) return prev;
+      const { [name]: _, ...rest } = prev;
+      return rest;
+    });
+    if (selectedTrip === name) setSelectedTrip(null);
     setDeleteTripTarget(null);
   };
 
-  const submitAdd = () => {
-    if (!addText.trim() || !selectedTrip) return;
-    onAdd({
-      text: addText.trim(),
-      subcategory: addSection,
-      tripName: selectedTrip,
-    });
-    setAddText('');
-    setShowAddForm(false);
-  };
+  const renderTripGrid = () => (
+    <View style={styles.container}>
+      {tripSummaries.length === 0 && !showNewTrip ? (
+        <View style={[styles.emptyState, { borderColor: accentLight, backgroundColor: Theme.surface }]}>
+          <Text style={[styles.emptyTitle, { color: accentDark }]}>No trips yet</Text>
+          <Text style={styles.emptyHint}>Start with Japan, Spain, Camping — whatever you're planning next.</Text>
+        </View>
+      ) : (
+        <View style={styles.grid}>
+          {tripSummaries.map((trip) => (
+            <Pressable
+              key={trip.name}
+              style={({ pressed }) => [styles.cardWrap, pressed && styles.cardPressed]}
+              onPress={() => setSelectedTrip(trip.name)}>
+              <View
+                style={[
+                  styles.gridCard,
+                  PlansUI.cardShadow,
+                  { backgroundColor: Theme.surface, borderColor: Theme.border },
+                ]}>
+                <Text style={styles.gridLabel} numberOfLines={3}>
+                  {trip.name}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
-  const startEdit = (item: PlanItem) => {
-    setEditingId(item.id);
-    setEditText(item.text);
-    setEditSection(normalizeSection(item.subcategory));
-    setShowAddForm(false);
-  };
-
-  const saveEdit = (item: PlanItem) => {
-    if (!editText.trim()) return;
-    onEdit({
-      ...item,
-      text: editText.trim(),
-      subcategory: editSection,
-      tripName: selectedTrip ?? item.tripName,
-    });
-    setEditingId(null);
-    setEditText('');
-  };
-
-  const renderItem = (item: PlanItem) => {
-    if (editingId === item.id) {
-      return (
-        <View key={item.id} style={[styles.editCard, { borderColor: accentLight }]}>
+      {showNewTrip ? (
+        <View style={[styles.newTripCard, PlansUI.cardShadow, { borderColor: accentLight }]}>
+          <Text style={[styles.newTripTitle, { color: accentDark }]}>New trip</Text>
           <TextInput
-            style={styles.editInput}
-            value={editText}
-            onChangeText={setEditText}
-            autoFocus
-            placeholder="Item"
+            style={[styles.newTripInput, { borderColor: accentLight }]}
+            value={newTripName}
+            onChangeText={setNewTripName}
+            placeholder="e.g. Japan, Spain, Camping"
             placeholderTextColor={Theme.textSecondary}
+            autoFocus
+            onSubmitEditing={confirmNewTrip}
+            returnKeyType="done"
           />
-          <ChipPicker
-            label="Section"
-            options={sections}
-            selected={editSection}
-            onSelect={setEditSection}
-            accentColor={accent}
-            accentLight={accentLight}
+          <View style={styles.newTripActions}>
+            <Pressable
+              style={styles.tripMetaBtn}
+              onPress={() => {
+                setShowNewTrip(false);
+                setNewTripName('');
+              }}>
+              <Text style={styles.tripMetaCancel}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.tripMetaSave, { backgroundColor: accent }, !newTripName.trim() && styles.btnDisabled]}
+              onPress={confirmNewTrip}
+              disabled={!newTripName.trim()}>
+              <Text style={styles.tripMetaSaveText}>Add trip</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <Pressable
+          style={[styles.newTripRow, { borderColor: accentLight, backgroundColor: Theme.surface }]}
+          onPress={() => setShowNewTrip(true)}>
+          <Text style={[styles.newTripRowText, { color: accentDark }]}>+ New trip</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+
+  const renderTripDetail = (tripName: string) => {
+    const sectionKey = getSectionForTrip(tripName);
+    const sectionLabel = sections.find((s) => s.key === sectionKey)?.label;
+    const tripItems = itemsForTripSection(tripName, sectionKey);
+
+    if (editingTripName === tripName) {
+      return (
+        <View style={styles.container}>
+          <PlanSectionHeader
+            category="travel_ideas"
+            theme={theme}
+            title={tripName}
+            hint="Rename this trip"
+            onBack={() => {
+              cancelEditTrip();
+              setSelectedTrip(null);
+            }}
+            backLabel="← Trips"
           />
-          <View style={styles.editActions}>
-            <Pressable style={[styles.saveBtn, { backgroundColor: accent }]} onPress={() => saveEdit(item)}>
-              <Text style={styles.saveBtnText}>Save</Text>
-            </Pressable>
-            <Pressable style={styles.cancelBtn} onPress={() => setEditingId(null)}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </Pressable>
-            <Pressable style={styles.deleteBtn} onPress={() => setDeleteTarget(item)}>
-              <Text style={styles.deleteBtnText}>Delete</Text>
-            </Pressable>
+          <View style={[styles.editTripCard, PlansUI.cardShadow, { borderColor: accentLight }]}>
+            <Text style={[styles.editTripTitle, { color: accentDark }]}>Rename trip</Text>
+            <TextInput
+              style={[styles.editTripInput, { borderColor: accentLight }]}
+              value={editTripNameText}
+              onChangeText={setEditTripNameText}
+              placeholder="Trip name"
+              placeholderTextColor={Theme.textSecondary}
+              autoFocus
+              onSubmitEditing={() => confirmRenameTrip(tripName)}
+              returnKeyType="done"
+            />
+            <View style={styles.editTripActions}>
+              <Pressable style={styles.tripMetaBtn} onPress={cancelEditTrip}>
+                <Text style={styles.tripMetaCancel}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.tripMetaSave, { backgroundColor: accent }, !editTripNameText.trim() && styles.btnDisabled]}
+                onPress={() => confirmRenameTrip(tripName)}
+                disabled={!editTripNameText.trim()}>
+                <Text style={styles.tripMetaSaveText}>Save</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       );
     }
 
     return (
-      <View key={item.id} style={[styles.itemRow, PlansUI.cardShadow]}>
-        <Pressable style={styles.checkHit} onPress={() => onToggle(item.id)}>
-          <View
-            style={[
-              styles.checkbox,
-              { borderColor: accent },
-              item.completed && { backgroundColor: accent, borderColor: accent },
-            ]}>
-            {item.completed ? <Text style={styles.checkmark}>✓</Text> : null}
+      <View style={styles.container}>
+        <PlanSectionHeader
+          category="travel_ideas"
+          theme={theme}
+          title={tripName}
+          hint="Pick a section, add items, and check them off when done"
+          onBack={() => setSelectedTrip(null)}
+          backLabel="← Trips"
+          footer={
+            <View style={styles.detailActions}>
+              <Pressable style={styles.tripMetaBtn} onPress={() => startEditTrip(tripName)}>
+                <Text style={[styles.tripMetaLink, { color: accent }]}>Rename</Text>
+              </Pressable>
+              <Pressable style={styles.tripMetaBtn} onPress={() => setDeleteTripTarget(tripName)}>
+                <Text style={styles.tripMetaDelete}>Delete trip</Text>
+              </Pressable>
+            </View>
+          }
+        />
+
+        {sections.length > 0 ? (
+          <View style={styles.sectionDropdown}>
+            <ChecklistListDropdown
+              options={sections}
+              selected={sectionKey}
+              onSelect={(key) => setSectionForTrip(tripName, key)}
+              onManageLists={() => onEditSections?.()}
+              theme={theme}
+              menuTitle="Sections"
+              manageLabel="+ Add / edit section"
+              placeholder="Choose section"
+            />
           </View>
-        </Pressable>
-        <Pressable style={styles.itemBody} onPress={() => startEdit(item)}>
-          <Text style={[styles.itemText, item.completed && styles.itemDone]} numberOfLines={3}>
-            {item.text}
-          </Text>
-          {sectionFilter === 'all' ? (
-            <Text style={[styles.itemSection, { color: accentDark }]}>{sectionLabel(item.subcategory)}</Text>
-          ) : null}
-        </Pressable>
+        ) : null}
+
+        <ChecklistView
+          variant="store"
+          items={tripItems}
+          category={'travel_ideas' as PlanCategory}
+          theme={theme}
+          subcategoryOptions={sections}
+          defaultSubcategoryKey={sectionKey}
+          defaultTripName={tripName}
+          sectionLabel={sectionLabel}
+          onToggle={onToggle}
+          onAdd={onAdd}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onClearCompleted={() => onClearCompleted(tripName, sectionKey)}
+        />
       </View>
     );
   };
 
-  if (!selectedTrip) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.listHeading}>Your trips</Text>
-        <Text style={styles.listSubheading}>Tap a trip to open its packing, places, and budget.</Text>
-
-        {tripSummaries.length === 0 && !showNewTrip ? (
-          <View style={[styles.emptyState, { borderColor: accentLight }]}>
-            <Text style={[styles.emptyTitle, { color: accentDark }]}>No trips yet</Text>
-            <Text style={styles.emptyHint}>Start with Japan, Spain, Camping — whatever you're planning next.</Text>
-          </View>
-        ) : (
-          <View style={styles.tripList}>
-            {tripSummaries.map((trip) =>
-              editingTripName === trip.name ? (
-                <View key={trip.name} style={[styles.newTripCard, { borderColor: accentLight }]}>
-                  <Text style={[styles.newTripTitle, { color: accentDark }]}>Rename trip</Text>
-                  <TextInput
-                    style={styles.newTripInput}
-                    value={editTripNameText}
-                    onChangeText={setEditTripNameText}
-                    placeholder="Trip name"
-                    placeholderTextColor={Theme.textSecondary}
-                    autoFocus
-                    onSubmitEditing={() => confirmRenameTrip(trip.name)}
-                    returnKeyType="done"
-                  />
-                  <View style={styles.newTripActions}>
-                    <Pressable style={styles.newTripCancel} onPress={cancelEditTrip}>
-                      <Text style={styles.newTripCancelText}>Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[
-                        styles.newTripBtn,
-                        { backgroundColor: accent },
-                        !editTripNameText.trim() && styles.btnDisabled,
-                      ]}
-                      onPress={() => confirmRenameTrip(trip.name)}
-                      disabled={!editTripNameText.trim()}>
-                      <Text style={styles.newTripBtnText}>Save</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : (
-                <View key={trip.name} style={[styles.tripRow, PlansUI.cardShadow]}>
-                  <Pressable
-                    style={({ pressed }) => [styles.tripRowMain, pressed && { opacity: 0.85 }]}
-                    onPress={() => openTrip(trip.name)}>
-                    <View style={[styles.tripIcon, { backgroundColor: accentLight }]}>
-                      <Text style={styles.tripIconText}>{theme.icon}</Text>
-                    </View>
-                    <View style={styles.tripRowBody}>
-                      <Text style={styles.tripRowTitle}>{trip.name}</Text>
-                    </View>
-                  </Pressable>
-                  <View style={styles.tripRowActions}>
-                    <Pressable style={styles.tripActionBtn} onPress={() => startEditTrip(trip.name)}>
-                      <Text style={[styles.tripEditLink, { color: accent }]}>Edit</Text>
-                    </Pressable>
-                    <Pressable style={styles.tripActionBtn} onPress={() => setDeleteTripTarget(trip.name)}>
-                      <Text style={styles.tripDeleteLink}>Delete</Text>
-                    </Pressable>
-                  </View>
-                  <Pressable style={styles.tripChevronHit} onPress={() => openTrip(trip.name)}>
-                    <Text style={[styles.tripChevron, { color: accent }]}>›</Text>
-                  </Pressable>
-                </View>
-              )
-            )}
-          </View>
-        )}
-
-        {showNewTrip ? (
-          <View style={[styles.newTripCard, { borderColor: accentLight }]}>
-            <Text style={[styles.newTripTitle, { color: accentDark }]}>New trip</Text>
-            <TextInput
-              style={styles.newTripInput}
-              value={newTripName}
-              onChangeText={setNewTripName}
-              placeholder="e.g. Japan, Spain, Camping"
-              placeholderTextColor={Theme.textSecondary}
-              autoFocus
-              onSubmitEditing={confirmNewTrip}
-              returnKeyType="done"
-            />
-            <View style={styles.newTripActions}>
-              <Pressable style={styles.newTripCancel} onPress={() => setShowNewTrip(false)}>
-                <Text style={styles.newTripCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.newTripBtn, { backgroundColor: accent }, !newTripName.trim() && styles.btnDisabled]}
-                onPress={confirmNewTrip}
-                disabled={!newTripName.trim()}>
-                <Text style={styles.newTripBtnText}>Open trip</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : (
-          <Pressable
-            style={[styles.newTripRow, { borderColor: accentLight }]}
-            onPress={() => {
-              setEditingTripName(null);
-              setShowNewTrip(true);
-            }}>
-            <Text style={[styles.newTripRowText, { color: accentDark }]}>+ New</Text>
-          </Pressable>
-        )}
-
-        <Modal
-          visible={deleteTripTarget !== null}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setDeleteTripTarget(null)}>
-          <Pressable style={styles.overlay} onPress={() => setDeleteTripTarget(null)}>
-            <Pressable style={styles.popup} onPress={() => {}}>
-              <Text style={styles.popupTitle}>Delete trip?</Text>
-              <Text style={styles.popupMessage}>
-                Remove "{deleteTripTarget}" and all its items? This can't be undone.
-              </Text>
-              <View style={styles.popupActions}>
-                <Pressable style={styles.popupCancel} onPress={() => setDeleteTripTarget(null)}>
-                  <Text style={styles.popupCancelText}>Cancel</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.popupConfirm, { backgroundColor: PlansUI.delete }]}
-                  onPress={() => {
-                    if (deleteTripTarget) confirmDeleteTrip(deleteTripTarget);
-                  }}>
-                  <Text style={styles.popupConfirmText}>Delete</Text>
-                </Pressable>
-              </View>
-            </Pressable>
-          </Pressable>
-        </Modal>
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      <View style={styles.detailHeader}>
-        <Pressable style={styles.backBtn} onPress={closeTrip}>
-          <Text style={[styles.backText, { color: accentDark }]}>← Trips</Text>
-        </Pressable>
-        <Text style={[styles.detailTitle, { color: accentDark }]}>{selectedTrip}</Text>
-      </View>
-
-      <View style={[styles.filtersBar, { borderColor: accentLight }]}>
-        <ChipPicker
-          label="Section"
-          options={sections}
-          selected={sectionFilter}
-          onSelect={setSectionFilter}
-          includeAll
-          accentColor={accent}
-          accentLight={accentLight}
-        />
-        {onEditSections ? (
-          <Pressable style={styles.editSectionsBtn} onPress={onEditSections}>
-            <Text style={[styles.editSectionsText, { color: accentDark }]}>Edit sections</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      {!showAddForm ? (
-        <Pressable
-          style={({ pressed }) => [
-            styles.addTrigger,
-            { backgroundColor: theme.accentMuted, borderColor: accentLight },
-            pressed && { backgroundColor: accentLight },
-          ]}
-          onPress={() => {
-            setAddSection(sectionFilter !== 'all' ? sectionFilter : sections[0]?.key ?? 'places');
-            setShowAddForm(true);
-          }}>
-          <View style={[styles.addIcon, { backgroundColor: accent }]}>
-            <Text style={styles.addIconText}>+</Text>
-          </View>
-          <Text style={[styles.addTriggerText, { color: accentDark }]}>Add item</Text>
-        </Pressable>
-      ) : (
-        <View style={[styles.addCard, PlansUI.cardShadow, { borderColor: accentLight }]}>
-          <View style={styles.addCardHeader}>
-            <Text style={[styles.addCardTitle, { color: accentDark }]}>New item</Text>
-            <Pressable hitSlop={8} onPress={() => setShowAddForm(false)}>
-              <Text style={styles.addCloseText}>×</Text>
-            </Pressable>
-          </View>
-          <ChipPicker
-            label="Section"
-            options={sections}
-            selected={addSection}
-            onSelect={setAddSection}
-            accentColor={accent}
-            accentLight={accentLight}
-          />
-          <View style={styles.addRow}>
-            <TextInput
-              style={[styles.input, { borderColor: accentLight }]}
-              value={addText}
-              onChangeText={setAddText}
-              placeholder="What do you want to add?"
-              placeholderTextColor={Theme.textSecondary}
-              onSubmitEditing={submitAdd}
-              returnKeyType="done"
-              autoFocus
-            />
-            <Pressable
-              style={[styles.addBtn, { backgroundColor: accent }, !addText.trim() && styles.btnDisabled]}
-              onPress={submitAdd}
-              disabled={!addText.trim()}>
-              <Text style={styles.addBtnText}>Add</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-
-      {filteredItems.length === 0 ? (
-        <Text style={styles.emptyItems}>
-          {sectionFilter === 'all'
-            ? 'Nothing in this trip yet — add your first item above.'
-            : `No items in ${sections.find((s) => s.key === sectionFilter)?.label ?? 'this section'}.`}
-        </Text>
-      ) : (
-        <View style={styles.itemList}>{filteredItems.map(renderItem)}</View>
-      )}
+    <>
+      {selectedTrip ? renderTripDetail(selectedTrip) : renderTripGrid()}
 
       <Modal
-        visible={deleteTarget !== null}
+        visible={deleteTripTarget !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setDeleteTarget(null)}>
-        <Pressable style={styles.overlay} onPress={() => setDeleteTarget(null)}>
+        onRequestClose={() => setDeleteTripTarget(null)}>
+        <Pressable style={styles.overlay} onPress={() => setDeleteTripTarget(null)}>
           <Pressable style={styles.popup} onPress={() => {}}>
-            <Text style={styles.popupTitle}>Delete item?</Text>
+            <Text style={styles.popupTitle}>Delete trip?</Text>
             <Text style={styles.popupMessage}>
-              Remove "{deleteTarget?.text}"? This can't be undone.
+              Remove "{deleteTripTarget}" and all its items? This can't be undone.
             </Text>
             <View style={styles.popupActions}>
-              <Pressable style={styles.popupCancel} onPress={() => setDeleteTarget(null)}>
+              <Pressable style={styles.popupCancel} onPress={() => setDeleteTripTarget(null)}>
                 <Text style={styles.popupCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
                 style={[styles.popupConfirm, { backgroundColor: PlansUI.delete }]}
                 onPress={() => {
-                  if (deleteTarget) onDelete(deleteTarget.id);
-                  setDeleteTarget(null);
-                  setEditingId(null);
+                  if (deleteTripTarget) confirmDeleteTrip(deleteTripTarget);
                 }}>
                 <Text style={styles.popupConfirmText}>Delete</Text>
               </Pressable>
@@ -495,64 +378,77 @@ export default function TravelPlanView({
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { marginTop: 8 },
-  listHeading: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: Theme.text,
-    marginBottom: 4,
-  },
-  listSubheading: {
-    fontSize: 13,
-    color: Theme.textSecondary,
-    marginBottom: 16,
-    lineHeight: 18,
-  },
-  tripList: { gap: 10, marginBottom: 12 },
-  tripRow: {
+  container: { marginTop: 4 },
+  grid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Theme.surface,
-    borderRadius: 16,
-    padding: 14,
+    flexWrap: 'wrap',
+    marginHorizontal: -6,
+    marginBottom: 12,
+  },
+  cardWrap: {
+    width: '50%',
+    padding: 6,
+  },
+  cardPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.98 }],
+  },
+  gridCard: {
+    borderRadius: 18,
+    padding: 16,
+    minHeight: 88,
     borderWidth: 1,
-    borderColor: Theme.border,
-    gap: 8,
-  },
-  tripRowMain: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  tripIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
     justifyContent: 'center',
   },
-  tripIconText: { fontSize: 20 },
-  tripRowBody: { flex: 1 },
-  tripRowTitle: {
-    fontSize: 17,
+  gridLabel: {
+    fontSize: 15,
     fontWeight: '700',
+    lineHeight: 20,
     color: Theme.text,
   },
-  tripRowActions: { flexDirection: 'row', gap: 2 },
-  tripActionBtn: { paddingHorizontal: 6, paddingVertical: 4 },
-  tripEditLink: { fontSize: 13, fontWeight: '600' },
-  tripDeleteLink: { fontSize: 13, fontWeight: '600', color: PlansUI.delete },
-  tripChevronHit: { paddingLeft: 2 },
-  tripChevron: {
-    fontSize: 24,
-    fontWeight: '600',
-    marginTop: -2,
+  sectionDropdown: {
+    marginBottom: 4,
+  },
+  detailActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tripMetaBtn: { paddingHorizontal: 6, paddingVertical: 4 },
+  tripMetaLink: { fontSize: 13, fontWeight: '600' },
+  tripMetaDelete: { fontSize: 13, fontWeight: '600', color: PlansUI.delete },
+  tripMetaCancel: { fontSize: 14, fontWeight: '600', color: Theme.textSecondary },
+  tripMetaSave: {
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  tripMetaSaveText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  editTripCard: {
+    backgroundColor: Theme.surface,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+  },
+  editTripTitle: { fontSize: 16, fontWeight: '700', marginBottom: 10 },
+  editTripInput: {
+    backgroundColor: Theme.background,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  editTripActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    alignItems: 'center',
   },
   newTripRow: {
     borderRadius: 16,
@@ -560,7 +456,6 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     paddingVertical: 14,
     alignItems: 'center',
-    backgroundColor: Theme.surface,
   },
   newTripRowText: {
     fontSize: 15,
@@ -571,7 +466,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    marginTop: 4,
+    marginBottom: 12,
   },
   newTripTitle: { fontSize: 16, fontWeight: '700', marginBottom: 10 },
   newTripInput: {
@@ -580,7 +475,6 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: Theme.border,
     marginBottom: 12,
   },
   newTripActions: {
@@ -589,14 +483,6 @@ const styles = StyleSheet.create({
     gap: 12,
     alignItems: 'center',
   },
-  newTripCancel: { paddingVertical: 10, paddingHorizontal: 8 },
-  newTripCancelText: { fontSize: 15, fontWeight: '600', color: Theme.textSecondary },
-  newTripBtn: {
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-  },
-  newTripBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   btnDisabled: { opacity: 0.45 },
   emptyState: {
     borderRadius: 16,
@@ -604,7 +490,6 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     padding: 24,
     alignItems: 'center',
-    backgroundColor: Theme.surface,
     marginBottom: 12,
   },
   emptyTitle: { fontSize: 17, fontWeight: '700', marginBottom: 6 },
@@ -614,166 +499,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  detailHeader: {
-    marginBottom: 12,
-  },
-  backBtn: {
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-    marginBottom: 8,
-  },
-  backText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  detailTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    marginBottom: 4,
-  },
-  filtersBar: {
-    backgroundColor: Theme.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 4,
-    paddingBottom: 8,
-    marginBottom: 14,
-  },
-  editSectionsBtn: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingBottom: 4,
-  },
-  editSectionsText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  addTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 14,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-  },
-  addIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addIconText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '500',
-    lineHeight: 22,
-    marginTop: -1,
-  },
-  addTriggerText: { fontSize: 16, fontWeight: '600' },
-  addCard: {
-    marginBottom: 14,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    backgroundColor: Theme.surface,
-    gap: 4,
-  },
-  addCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  addCardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  addCloseText: {
-    fontSize: 22,
-    color: Theme.textSecondary,
-    lineHeight: 24,
-  },
-  addRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: Theme.background,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: Theme.text,
-    borderWidth: 1,
-  },
-  addBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    minWidth: 64,
-    alignItems: 'center',
-  },
-  addBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  emptyItems: {
-    fontSize: 14,
-    color: Theme.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    paddingVertical: 24,
-    paddingHorizontal: 12,
-  },
-  itemList: { gap: 8 },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: Theme.surface,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Theme.border,
-    gap: 10,
-  },
-  checkHit: { paddingTop: 2 },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkmark: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  itemBody: { flex: 1 },
-  itemText: { fontSize: 15, color: Theme.text, lineHeight: 21 },
-  itemDone: { textDecorationLine: 'line-through', color: Theme.textSecondary },
-  itemSection: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  editCard: {
-    backgroundColor: Theme.surface,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1.5,
-    gap: 4,
-  },
-  editInput: { fontSize: 15, color: Theme.text, padding: 4, marginBottom: 4 },
-  editActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  saveBtn: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10 },
-  saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  cancelBtn: { paddingHorizontal: 12, paddingVertical: 9 },
-  cancelBtnText: { color: Theme.textSecondary, fontWeight: '600' },
-  deleteBtn: { paddingHorizontal: 12, paddingVertical: 9 },
-  deleteBtnText: { color: PlansUI.delete, fontWeight: '600', fontSize: 14 },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',

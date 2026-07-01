@@ -22,17 +22,21 @@ export default function AppDataSync() {
   const { user } = useAuth();
   const { couple } = useCouple();
   const {
-    loading,
+    storageReady,
     events,
     planItems,
     expenses,
     planSubcategories,
     eventCategories,
     weeklyGoals,
+    crossedOffDates,
     getAppStatePayload,
     replaceAppStateFromRemote,
     getSyncMeta,
     setLastAppliedRemoteAt,
+    resetSyncScope,
+    resetScopeLocalFields,
+    setRemoteSyncReady,
   } = useApp();
 
   const coupleId = couple?.connected ? couple.coupleId : undefined;
@@ -40,7 +44,12 @@ export default function AppDataSync() {
   const pullingRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextPushRef = useRef(false);
+  const pullCompletedRef = useRef(false);
   const lastPushErrorRef = useRef<string | null>(null);
+  const lastPulledUserIdRef = useRef<string | undefined>(undefined);
+  const lastPulledCoupleIdRef = useRef<string | null | undefined>(undefined);
+  const getAppStatePayloadRef = useRef(getAppStatePayload);
+  getAppStatePayloadRef.current = getAppStatePayload;
 
   const pushToRemote = useCallback(async () => {
     if (!userId) return;
@@ -68,12 +77,34 @@ export default function AppDataSync() {
     pullingRef.current = true;
 
     try {
-      const local = getAppStatePayload();
       const syncMeta = getSyncMeta();
+      const currentCoupleId = coupleId ?? null;
+      const scopeChanged =
+        syncMeta.syncUserId !== userId || syncMeta.syncCoupleId !== currentCoupleId;
+
+      if (scopeChanged) {
+        resetSyncScope(userId, currentCoupleId);
+        resetScopeLocalFields();
+      }
+
+      const local = getAppStatePayloadRef.current();
+      const lastLocalChangeAt = scopeChanged
+        ? new Date(0).toISOString()
+        : syncMeta.lastLocalChangeAt;
+
+      const markPullSuccess = () => {
+        lastPulledUserIdRef.current = userId;
+        lastPulledCoupleIdRef.current = currentCoupleId;
+      };
 
       if (coupleId) {
         const remote = await fetchCoupleAppState(coupleId);
-        const resolved = resolveAppStateOnPull(local, remote, syncMeta.lastLocalChangeAt);
+        const resolved = resolveAppStateOnPull(
+          local,
+          remote,
+          lastLocalChangeAt,
+          scopeChanged
+        );
 
         if (resolved.action === 'upsert') {
           if (!isEmptyAppState(resolved.payload) || !remote) {
@@ -82,17 +113,24 @@ export default function AppDataSync() {
           skipNextPushRef.current = true;
           replaceAppStateFromRemote(resolved.payload);
           setLastAppliedRemoteAt(resolved.payload.updatedAt ?? new Date().toISOString());
+          markPullSuccess();
           return;
         }
 
         skipNextPushRef.current = true;
         replaceAppStateFromRemote(resolved.payload);
         setLastAppliedRemoteAt(resolved.payload.updatedAt ?? new Date().toISOString());
+        markPullSuccess();
         return;
       }
 
       const remote = await fetchUserAppState(userId);
-      const resolved = resolveAppStateOnPull(local, remote, syncMeta.lastLocalChangeAt);
+      const resolved = resolveAppStateOnPull(
+        local,
+        remote,
+        lastLocalChangeAt,
+        scopeChanged
+      );
 
       if (resolved.action === 'upsert') {
         if (!isEmptyAppState(resolved.payload) || !remote) {
@@ -101,12 +139,14 @@ export default function AppDataSync() {
         skipNextPushRef.current = true;
         replaceAppStateFromRemote(resolved.payload);
         setLastAppliedRemoteAt(resolved.payload.updatedAt ?? new Date().toISOString());
+        markPullSuccess();
         return;
       }
 
       skipNextPushRef.current = true;
       replaceAppStateFromRemote(resolved.payload);
       setLastAppliedRemoteAt(resolved.payload.updatedAt ?? new Date().toISOString());
+      markPullSuccess();
     } catch (error) {
       logSyncError('Pull failed — run supabase/app_state.sql in Supabase if tables are missing', error);
     } finally {
@@ -115,19 +155,30 @@ export default function AppDataSync() {
   }, [
     coupleId,
     userId,
-    getAppStatePayload,
     getSyncMeta,
     replaceAppStateFromRemote,
     setLastAppliedRemoteAt,
+    resetSyncScope,
+    resetScopeLocalFields,
   ]);
 
   useEffect(() => {
-    if (loading || !userId) return;
-    pullRemote();
-  }, [loading, userId, coupleId, pullRemote]);
+    pullCompletedRef.current = false;
+    skipNextPushRef.current = true;
+    setRemoteSyncReady(false);
+  }, [userId, coupleId, setRemoteSyncReady]);
 
   useEffect(() => {
-    if (loading || !userId) return;
+    if (!storageReady || !userId) return;
+
+    pullRemote().finally(() => {
+      pullCompletedRef.current = true;
+      setRemoteSyncReady(true);
+    });
+  }, [storageReady, userId, coupleId, pullRemote, setRemoteSyncReady]);
+
+  useEffect(() => {
+    if (!storageReady || !userId || !pullCompletedRef.current) return;
     if (skipNextPushRef.current) {
       skipNextPushRef.current = false;
       return;
@@ -144,7 +195,7 @@ export default function AppDataSync() {
       if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
     };
   }, [
-    loading,
+    storageReady,
     userId,
     coupleId,
     events,
@@ -153,6 +204,7 @@ export default function AppDataSync() {
     planSubcategories,
     eventCategories,
     weeklyGoals,
+    crossedOffDates,
     pushToRemote,
   ]);
 

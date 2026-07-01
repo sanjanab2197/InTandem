@@ -1,6 +1,6 @@
 import { addMonths, format, subMonths } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import CategoryRadialChart from '@/components/CategoryRadialChart';
 import ScreenHeader from '@/components/ScreenHeader';
@@ -12,6 +12,7 @@ import { computeCategoryStats, filterEventsForMonth } from '@/utils/stats';
 
 export default function StatsScreen() {
   const {
+    loading,
     events,
     eventCategories,
     weeklyGoals,
@@ -69,6 +70,14 @@ export default function StatsScreen() {
     setGoalDraft(parsed);
     setShowGoals(false);
   };
+
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color={Theme.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -168,6 +177,7 @@ export default function StatsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.background },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.background },
   scroll: { padding: 20, paddingBottom: 40 },
   monthNav: {
     flexDirection: 'row',

@@ -65,7 +65,7 @@ function mergeGoals(local: CategoryGoals, remote: CategoryGoals): CategoryGoals 
 function pickSyncedLists(
   a: AppStatePayload,
   b: AppStatePayload
-): Pick<AppStatePayload, 'events' | 'planItems' | 'expenses'> {
+): Pick<AppStatePayload, 'events' | 'planItems' | 'expenses' | 'crossedOffDates'> {
   const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
   const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
   const winner = aTime >= bTime ? a : b;
@@ -73,6 +73,7 @@ function pickSyncedLists(
     events: winner.events,
     planItems: winner.planItems,
     expenses: winner.expenses,
+    crossedOffDates: winner.crossedOffDates ?? [],
   };
 }
 
@@ -114,8 +115,28 @@ export function pickNewerAppState(local: AppStatePayload, remote: AppStatePayloa
 export function resolveAppStateOnPull(
   local: AppStatePayload,
   remote: AppStatePayload | null,
-  lastLocalChangeAt: string
+  lastLocalChangeAt: string,
+  scopeChanged = false
 ): { action: 'upsert'; payload: AppStatePayload } | { action: 'apply'; payload: AppStatePayload } {
+  if (scopeChanged) {
+    if (remote) {
+      return { action: 'apply', payload: remote };
+    }
+    return {
+      action: 'apply',
+      payload: {
+        events: [],
+        planItems: [],
+        expenses: [],
+        planSubcategories: undefined,
+        eventCategories: undefined,
+        weeklyGoals: {},
+        crossedOffDates: [],
+        updatedAt: new Date().toISOString(),
+      },
+    };
+  }
+
   if (!remote) {
     return { action: 'upsert', payload: local };
   }

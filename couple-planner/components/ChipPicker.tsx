@@ -10,6 +10,8 @@ interface ChipPickerProps {
   includeAll?: boolean;
   accentColor?: string;
   accentLight?: string;
+  trailingLabel?: string;
+  onTrailingPress?: () => void;
 }
 
 export default function ChipPicker({
@@ -20,6 +22,8 @@ export default function ChipPicker({
   includeAll = false,
   accentColor = Theme.primary,
   accentLight = Theme.primaryLight,
+  trailingLabel,
+  onTrailingPress,
 }: ChipPickerProps) {
   const activeStyle = { backgroundColor: accentLight, borderColor: accentColor };
   const activeTextStyle = { color: accentColor, fontWeight: '700' as const };
@@ -45,6 +49,11 @@ export default function ChipPicker({
             </Text>
           </Pressable>
         ))}
+        {trailingLabel && onTrailingPress ? (
+          <Pressable style={[styles.chip, styles.trailingChip]} onPress={onTrailingPress}>
+            <Text style={[styles.chipText, styles.trailingChipText]}>{trailingLabel}</Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -70,4 +79,11 @@ const styles = StyleSheet.create({
     borderColor: Theme.border,
   },
   chipText: { fontSize: 13, fontWeight: '600', color: Theme.textSecondary },
+  trailingChip: {
+    borderStyle: 'dashed',
+    backgroundColor: Theme.background,
+  },
+  trailingChipText: {
+    color: Theme.primary,
+  },
 });

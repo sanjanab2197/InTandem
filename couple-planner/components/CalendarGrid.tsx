@@ -35,13 +35,34 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DOT_SIZE = 7;
 const DOT_GAP = 2;
 const MAX_DOTS = 3;
-const MAX_SPAN_BARS = 2;
 const SPAN_LINE_HEIGHT = 2;
 const SPAN_CAP_WIDTH = 2;
-const SPAN_CAP_HEIGHT = 8;
+const MAX_SPAN_LANES = 4;
+
+type SpanMetrics = {
+  labelHeight: number;
+  capHeight: number;
+  laneGap: number;
+  rowHeight: number;
+  fontSize: number;
+};
+
+function getSpanMetrics(laneCount: number): SpanMetrics {
+  if (laneCount <= 1) {
+    return { labelHeight: 10, capHeight: 12, laneGap: 2, rowHeight: 22, fontSize: 8 };
+  }
+  if (laneCount === 2) {
+    return { labelHeight: 9, capHeight: 10, laneGap: 1, rowHeight: 19, fontSize: 8 };
+  }
+  return { labelHeight: 7, capHeight: 8, laneGap: 1, rowHeight: 15, fontSize: 7 };
+}
+
+function weekSpanZoneHeight(laneCount: number, metrics: SpanMetrics): number {
+  if (laneCount <= 0) return 0;
+  return laneCount * metrics.rowHeight + Math.max(0, laneCount - 1) * metrics.laneGap;
+}
+
 const DOTS_ZONE_HEIGHT = DOT_SIZE + 4;
-const SPAN_LANE_GAP = 2;
-const SPAN_ROW_HEIGHT = 10 + SPAN_CAP_HEIGHT;
 const COL_WIDTH = '14.285714%';
 
 type WeekSpan = {
@@ -51,6 +72,37 @@ type WeekSpan = {
   showLeftCap: boolean;
   showRightCap: boolean;
 };
+
+type EventWeekSpan = {
+  event: CalendarEvent;
+  span: WeekSpan;
+  color: string;
+};
+
+function spansOverlap(a: WeekSpan, b: WeekSpan): boolean {
+  return a.startCol <= b.endCol && b.startCol <= a.endCol;
+}
+
+function assignSpanLanes(items: EventWeekSpan[]): EventWeekSpan[][] {
+  const sorted = [...items].sort((a, b) => {
+    if (a.span.startCol !== b.span.startCol) return a.span.startCol - b.span.startCol;
+    return a.span.endCol - b.span.endCol;
+  });
+
+  const lanes: EventWeekSpan[][] = [];
+  for (const item of sorted) {
+    let placed = false;
+    for (const lane of lanes) {
+      if (!lane.some((existing) => spansOverlap(existing.span, item.span))) {
+        lane.push(item);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) lanes.push([item]);
+  }
+  return lanes;
+}
 
 function getWeekSpan(event: CalendarEvent, week: Date[]): WeekSpan | null {
   let startCol = -1;
@@ -98,11 +150,6 @@ export default function CalendarGrid({
     return eachDayOfInterval({ start: calStart, end: calEnd });
   }, [currentMonth]);
 
-  const spanLanes = useMemo(
-    () => events.filter(isMultiDayEvent).slice(0, MAX_SPAN_BARS),
-    [events]
-  );
-
   const weekRows = useMemo(() => {
     const rows: (typeof days)[] = [];
     for (let i = 0; i < days.length; i += 7) {
@@ -110,6 +157,19 @@ export default function CalendarGrid({
     }
     return rows;
   }, [days]);
+
+  const weekSpanLanes = useMemo(() => {
+    return weekRows.map((week) => {
+      const items: EventWeekSpan[] = [];
+      events.forEach((event) => {
+        if (!isMultiDayEvent(event)) return;
+        const span = getWeekSpan(event, week);
+        if (!span) return;
+        items.push({ event, span, color: resolveEventColor(event, eventCategories) });
+      });
+      return assignSpanLanes(items);
+    });
+  }, [weekRows, events, eventCategories]);
 
   const singleDayEventsByDate = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
@@ -121,9 +181,104 @@ export default function CalendarGrid({
     return map;
   }, [events]);
 
-  const spanZoneHeight = spanLanes.length * SPAN_ROW_HEIGHT + Math.max(0, spanLanes.length - 1) * SPAN_LANE_GAP;
-  const eventsZoneHeight = DOTS_ZONE_HEIGHT + spanZoneHeight + 4;
-  const cellMinHeight = 48 + eventsZoneHeight;
+  const renderBarSegment = (item: EventWeekSpan, metrics: SpanMetrics) => {
+    const { span, color } = item;
+    const colCount = span.endCol - span.startCol + 1;
+    const lineTop = (metrics.capHeight - SPAN_LINE_HEIGHT) / 2;
+
+    return (
+      <View
+        key={item.event.id}
+        style={[
+          styles.weekSpanSegment,
+          {
+            left: `${(span.startCol / 7) * 100}%`,
+            width: `${(colCount / 7) * 100}%`,
+            height: metrics.rowHeight,
+          },
+        ]}>
+        <View style={[styles.spanLineTrack, { height: metrics.capHeight }]}>
+          <View
+            style={[
+              styles.spanLineBar,
+              { backgroundColor: color, top: lineTop, height: SPAN_LINE_HEIGHT },
+            ]}
+          />
+        </View>
+        {span.showLeftCap ? (
+          <View
+            style={[
+              styles.spanVertical,
+              styles.spanVerticalLeft,
+              { backgroundColor: color, height: metrics.capHeight },
+            ]}
+          />
+        ) : null}
+        {span.showRightCap ? (
+          <View
+            style={[
+              styles.spanVertical,
+              styles.spanVerticalRight,
+              { backgroundColor: color, height: metrics.capHeight },
+            ]}
+          />
+        ) : null}
+      </View>
+    );
+  };
+
+  const renderLaneLabels = (lane: EventWeekSpan[], metrics: SpanMetrics) => {
+    const labelsByCol = new Map<
+      number,
+      { titles: string[]; color: string; hasLeftCap: boolean; endCol: number }
+    >();
+
+    lane.forEach(({ event, span, color }) => {
+      if (!span.showLabel) return;
+      const existing = labelsByCol.get(span.startCol);
+      if (existing) {
+        existing.titles.push(event.title);
+        existing.endCol = Math.max(existing.endCol, span.endCol);
+      } else {
+        labelsByCol.set(span.startCol, {
+          titles: [event.title],
+          color,
+          hasLeftCap: span.showLeftCap,
+          endCol: span.endCol,
+        });
+      }
+    });
+
+    return Array.from(labelsByCol.entries()).map(([startCol, { titles, color, hasLeftCap, endCol }]) => {
+      const colSpan = Math.max(1, Math.min(endCol - startCol + 1, 3));
+      return (
+        <View
+          key={`label-${startCol}-${titles.join(',')}`}
+          style={[
+            styles.weekSpanLabelSlot,
+            {
+              left: `${(startCol / 7) * 100}%`,
+              width: `${(colSpan / 7) * 100}%`,
+              height: metrics.labelHeight,
+              paddingLeft: hasLeftCap ? SPAN_CAP_WIDTH + 2 : 1,
+            },
+          ]}>
+          <Text
+            style={[styles.spanLabelAbove, { color, fontSize: metrics.fontSize, lineHeight: metrics.labelHeight }]}
+            numberOfLines={1}>
+            {titles.join(', ')}
+          </Text>
+        </View>
+      );
+    });
+  };
+
+  const renderLane = (lane: EventWeekSpan[], metrics: SpanMetrics) => (
+    <>
+      {renderLaneLabels(lane, metrics)}
+      {lane.map((item) => renderBarSegment(item, metrics))}
+    </>
+  );
 
   return (
     <View style={styles.container}>
@@ -146,8 +301,18 @@ export default function CalendarGrid({
       </View>
 
       <View style={styles.grid}>
-        {weekRows.map((week, weekIndex) => (
-          <View key={`week-${weekIndex}`} style={[styles.weekWrap, { minHeight: cellMinHeight }]}>
+        {weekRows.map((week, weekIndex) => {
+          const allLanes = weekSpanLanes[weekIndex] ?? [];
+          const hiddenLaneCount = Math.max(0, allLanes.length - MAX_SPAN_LANES);
+          const lanes = allLanes.slice(0, MAX_SPAN_LANES);
+          const metrics = getSpanMetrics(lanes.length);
+          const spanZoneHeight = weekSpanZoneHeight(lanes.length, metrics);
+          const overflowHeight = hiddenLaneCount > 0 ? 10 : 0;
+          const weekEventsZoneHeight = DOTS_ZONE_HEIGHT + spanZoneHeight + overflowHeight + 4;
+          const weekCellMinHeight = 48 + weekEventsZoneHeight;
+
+          return (
+          <View key={`week-${weekIndex}`} style={[styles.weekWrap, { minHeight: weekCellMinHeight }]}>
             <View style={styles.weekRow}>
               {week.map((day) => {
                 const dateStr = format(day, 'yyyy-MM-dd');
@@ -170,7 +335,7 @@ export default function CalendarGrid({
                     onPress={() => onDayPress(dateStr)}
                     onLongPress={() => onDayLongPress?.(dateStr)}
                     delayLongPress={400}>
-                    <View style={[styles.dayInner, { minHeight: cellMinHeight - 4 }]}>
+                    <View style={[styles.dayInner, { minHeight: weekCellMinHeight - 4 }]}>
                       <View style={styles.dayNumberCenter} pointerEvents="none">
                         <Text
                           style={[
@@ -183,9 +348,9 @@ export default function CalendarGrid({
                         </Text>
                       </View>
 
-                      <View style={[styles.eventsBottom, { height: eventsZoneHeight }]}>
-                        {spanLanes.length > 0 ? (
-                          <View style={{ height: spanZoneHeight }} />
+                      <View style={[styles.eventsBottom, { height: weekEventsZoneHeight }]}>
+                        {lanes.length > 0 ? (
+                          <View style={{ height: spanZoneHeight + overflowHeight }} />
                         ) : null}
                         <View style={styles.dotsZone}>
                           {hasDots ? (
@@ -212,64 +377,40 @@ export default function CalendarGrid({
               })}
             </View>
 
-            {spanLanes.length > 0 ? (
+            {lanes.length > 0 ? (
               <View
-                style={[styles.weekSpanLayer, { height: eventsZoneHeight }]}
+                style={[styles.weekSpanLayer, { height: weekEventsZoneHeight }]}
                 pointerEvents="none">
-                {spanLanes.map((event, laneIndex) => {
-                  const span = getWeekSpan(event, week);
-                  if (!span) return null;
-                  const color = getEventColor(event);
-                  const colCount = span.endCol - span.startCol + 1;
-                  const laneBottom =
-                    DOTS_ZONE_HEIGHT + laneIndex * (SPAN_ROW_HEIGHT + SPAN_LANE_GAP);
-
-                  return (
+                {hiddenLaneCount > 0 ? (
+                  <Text
+                    style={[
+                      styles.spanOverflowHint,
+                      { bottom: DOTS_ZONE_HEIGHT + spanZoneHeight + 1 },
+                    ]}>
+                    +{hiddenLaneCount} more
+                  </Text>
+                ) : null}
+                {lanes.map((lane, laneIndex) => (
                     <View
-                      key={event.id}
+                      key={`lane-${laneIndex}`}
                       style={[
                         styles.weekSpanLane,
                         {
-                          left: `${(span.startCol / 7) * 100}%`,
-                          width: `${(colCount / 7) * 100}%`,
-                          bottom: laneBottom,
+                          height: metrics.rowHeight,
+                          bottom:
+                            DOTS_ZONE_HEIGHT +
+                            overflowHeight +
+                            laneIndex * (metrics.rowHeight + metrics.laneGap),
                         },
                       ]}>
-                      {span.showLabel ? (
-                        <Text style={[styles.spanLabel, { color }]} numberOfLines={1}>
-                          {event.title}
-                        </Text>
-                      ) : (
-                        <View style={styles.spanLabelSpacer} />
-                      )}
-                      <View style={styles.spanLineTrack}>
-                        <View style={[styles.spanLineBar, { backgroundColor: color }]} />
-                        {span.showLeftCap ? (
-                          <View
-                            style={[
-                              styles.spanVertical,
-                              styles.spanVerticalLeft,
-                              { backgroundColor: color },
-                            ]}
-                          />
-                        ) : null}
-                        {span.showRightCap ? (
-                          <View
-                            style={[
-                              styles.spanVertical,
-                              styles.spanVerticalRight,
-                              { backgroundColor: color },
-                            ]}
-                          />
-                        ) : null}
-                      </View>
+                      {renderLane(lane, metrics)}
                     </View>
-                  );
-                })}
+                  ))}
               </View>
             ) : null}
           </View>
-        ))}
+          );
+        })}
       </View>
     </View>
   );
@@ -346,8 +487,21 @@ const styles = StyleSheet.create({
   },
   weekSpanLane: {
     position: 'absolute',
-    height: SPAN_ROW_HEIGHT,
+    left: 0,
+    right: 0,
     justifyContent: 'flex-end',
+  },
+  weekSpanSegment: {
+    position: 'absolute',
+    bottom: 0,
+    zIndex: 1,
+  },
+  weekSpanLabelSlot: {
+    position: 'absolute',
+    top: 0,
+    zIndex: 2,
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   dayCell: {
     width: COL_WIDTH,
@@ -414,35 +568,36 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     justifyContent: 'flex-end',
   },
-  spanLabel: {
-    fontSize: 8,
+  spanLabelAbove: {
     fontWeight: '700',
-    lineHeight: 10,
-    height: 10,
-    paddingHorizontal: 4,
     letterSpacing: -0.2,
   },
-  spanLabelSpacer: {
-    height: 10,
-  },
   spanLineTrack: {
-    height: SPAN_CAP_HEIGHT,
     width: '100%',
-    position: 'relative',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
   },
   spanLineBar: {
     position: 'absolute',
     left: 0,
     right: 0,
-    top: (SPAN_CAP_HEIGHT - SPAN_LINE_HEIGHT) / 2,
-    height: SPAN_LINE_HEIGHT,
   },
   spanVertical: {
     width: SPAN_CAP_WIDTH,
-    height: SPAN_CAP_HEIGHT,
     borderRadius: 1,
     position: 'absolute',
-    top: 0,
+    bottom: 0,
+    zIndex: 3,
+  },
+  spanOverflowHint: {
+    position: 'absolute',
+    right: 4,
+    fontSize: 7,
+    fontWeight: '600',
+    color: Theme.textSecondary,
+    lineHeight: 9,
   },
   spanVerticalLeft: {
     left: 0,

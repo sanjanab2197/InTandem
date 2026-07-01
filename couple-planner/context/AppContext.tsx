@@ -17,6 +17,7 @@ import {
   mergePlanSubcategories,
   uniqueSubcategoryKey as uniquePlanSubcategoryKey,
 } from '@/constants/plans';
+import { useAuth } from '@/context/AuthContext';
 import {
   AddExpenseInput,
   AddPlanItemInput,
@@ -40,17 +41,30 @@ import {
 import { pruneOldSettledExpenses } from '@/utils/expenseHistory';
 import { touchReminder, mergeReminders } from '@/utils/reminderMerge';
 
-const STORAGE_KEY = '@together_app_data';
-const SYNC_META_KEY = '@together_sync_meta';
+const LEGACY_STORAGE_KEY = '@together_app_data';
+const LEGACY_SYNC_META_KEY = '@together_sync_meta';
+const LEGACY_OWNER_KEY = '@together_legacy_owner';
+
+function storageKey(userId: string) {
+  return `@together_app_data:${userId}`;
+}
+
+function syncMetaKey(userId: string) {
+  return `@together_sync_meta:${userId}`;
+}
 
 interface SyncMeta {
   lastLocalChangeAt: string;
   lastAppliedRemoteAt: string | null;
+  syncUserId: string | null;
+  syncCoupleId: string | null;
 }
 
 const DEFAULT_SYNC_META: SyncMeta = {
   lastLocalChangeAt: new Date(0).toISOString(),
   lastAppliedRemoteAt: null,
+  syncUserId: null,
+  syncCoupleId: null,
 };
 
 const DEFAULT_PROFILE: CoupleProfile = {
@@ -75,6 +89,7 @@ const SYNCABLE_FIELDS: (keyof AppData)[] = [
   'planSubcategories',
   'eventCategories',
   'weeklyGoals',
+  'crossedOffDates',
 ];
 
 function hasSyncableChange(prev: AppData, next: AppData): boolean {
@@ -104,6 +119,7 @@ interface AppContextValue {
   addPlanItem: (category: PlanCategory, input: AddPlanItemInput) => void;
   updatePlanItem: (item: PlanItem) => void;
   deletePlanItem: (id: string) => void;
+  clearCompletedPlanItems: (category: PlanCategory, subcategory?: string, tripName?: string) => void;
   togglePlanItem: (id: string) => void;
   getPlanItemsByCategory: (category: PlanCategory) => PlanItem[];
   getPlanSubcategories: (category: PlanCategory) => ReturnType<typeof getSubcategoriesForCategory>;
@@ -121,6 +137,10 @@ interface AppContextValue {
   touchAppStateChange: () => void;
   getSyncMeta: () => SyncMeta;
   setLastAppliedRemoteAt: (iso: string) => void;
+  resetSyncScope: (userId: string, coupleId: string | null) => void;
+  resetScopeLocalFields: () => void;
+  setRemoteSyncReady: (ready: boolean) => void;
+  storageReady: boolean;
   addExpense: (input: AddExpenseInput) => void;
   updateExpense: (expense: Expense) => void;
   deleteExpense: (id: string) => void;
@@ -141,28 +161,68 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
+  const userId = user?.id;
   const [data, setData] = useState<AppData>(DEFAULT_DATA);
-  const [loading, setLoading] = useState(true);
+  const [storageReady, setStorageReady] = useState(false);
+  const [remoteSyncReady, setRemoteSyncReady] = useState(true);
   const [syncMeta, setSyncMeta] = useState<SyncMeta>(DEFAULT_SYNC_META);
   const syncMetaRef = useRef<SyncMeta>(DEFAULT_SYNC_META);
+  const userIdRef = useRef<string | undefined>(userId);
+  const persistEnabledRef = useRef(false);
+  const loading = authLoading || !storageReady || (!!userId && !remoteSyncReady);
+  userIdRef.current = userId;
 
   useEffect(() => {
     syncMetaRef.current = syncMeta;
   }, [syncMeta]);
 
   useEffect(() => {
-    Promise.all([AsyncStorage.getItem(STORAGE_KEY), AsyncStorage.getItem(SYNC_META_KEY)])
-      .then(([stored, storedMeta]) => {
+    if (authLoading) return;
+
+    if (!userId) {
+      persistEnabledRef.current = false;
+      setData(DEFAULT_DATA);
+      syncMetaRef.current = DEFAULT_SYNC_META;
+      setSyncMeta(DEFAULT_SYNC_META);
+      setStorageReady(true);
+      setRemoteSyncReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    persistEnabledRef.current = false;
+    setData(DEFAULT_DATA);
+    syncMetaRef.current = { ...DEFAULT_SYNC_META, syncUserId: userId };
+    setSyncMeta(syncMetaRef.current);
+    setStorageReady(false);
+    setRemoteSyncReady(false);
+
+    Promise.all([
+      AsyncStorage.getItem(storageKey(userId)),
+      AsyncStorage.getItem(syncMetaKey(userId)),
+    ])
+      .then(async ([stored, storedMeta]) => {
+        if (cancelled) return;
+
         if (storedMeta) {
           try {
             const parsedMeta = JSON.parse(storedMeta) as SyncMeta;
-            syncMetaRef.current = parsedMeta;
-            setSyncMeta(parsedMeta);
+            syncMetaRef.current = {
+              ...DEFAULT_SYNC_META,
+              ...parsedMeta,
+              syncUserId: parsedMeta.syncUserId ?? userId,
+            };
+            setSyncMeta(syncMetaRef.current);
           } catch {
-            syncMetaRef.current = DEFAULT_SYNC_META;
-            setSyncMeta(DEFAULT_SYNC_META);
+            syncMetaRef.current = { ...DEFAULT_SYNC_META, syncUserId: userId };
+            setSyncMeta(syncMetaRef.current);
           }
+        } else {
+          syncMetaRef.current = { ...DEFAULT_SYNC_META, syncUserId: userId };
+          setSyncMeta(syncMetaRef.current);
         }
+
         if (stored) {
           const parsed = JSON.parse(stored);
           const eventCategories = mergeEventCategories(parsed.eventCategories);
@@ -177,36 +237,87 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             planSubcategories: mergePlanSubcategories(parsed.planSubcategories),
             reminders: parsed.reminders ?? [],
             expenses: pruneOldSettledExpenses(parsed.expenses ?? []),
+            crossedOffDates: parsed.crossedOffDates ?? [],
           });
+          return;
+        }
+
+        const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+        const legacyOwner = await AsyncStorage.getItem(LEGACY_OWNER_KEY);
+        let migratedLegacy = false;
+        if (legacy && !cancelled && (!legacyOwner || legacyOwner === userId)) {
+          const parsed = JSON.parse(legacy);
+          const eventCategories = mergeEventCategories(parsed.eventCategories);
+          const migrated = {
+            ...DEFAULT_DATA,
+            ...parsed,
+            eventCategories,
+            weeklyGoals: syncWeeklyGoals(eventCategories, {
+              ...DEFAULT_WEEKLY_GOALS,
+              ...parsed.weeklyGoals,
+            }),
+            planSubcategories: mergePlanSubcategories(parsed.planSubcategories),
+            reminders: parsed.reminders ?? [],
+            expenses: pruneOldSettledExpenses(parsed.expenses ?? []),
+            crossedOffDates: parsed.crossedOffDates ?? [],
+          };
+          setData(migrated);
+          await AsyncStorage.setItem(storageKey(userId), JSON.stringify(migrated));
+          await AsyncStorage.setItem(LEGACY_OWNER_KEY, userId);
+          migratedLegacy = true;
+        }
+        if (legacy) {
+          await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
+          await AsyncStorage.removeItem(LEGACY_SYNC_META_KEY);
+        }
+
+        if (!cancelled && !migratedLegacy) {
+          setData(DEFAULT_DATA);
         }
       })
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => {
+        if (!cancelled) {
+          persistEnabledRef.current = true;
+          setStorageReady(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, userId]);
 
   const bumpLocalChange = useCallback(() => {
     const next: SyncMeta = {
       ...syncMetaRef.current,
       lastLocalChangeAt: new Date().toISOString(),
+      syncUserId: userIdRef.current ?? syncMetaRef.current.syncUserId,
     };
     syncMetaRef.current = next;
     setSyncMeta(next);
-    AsyncStorage.setItem(SYNC_META_KEY, JSON.stringify(next));
+    const uid = userIdRef.current;
+    if (uid) AsyncStorage.setItem(syncMetaKey(uid), JSON.stringify(next));
   }, []);
 
   const persist = useCallback(
     (updater: AppData | ((prev: AppData) => AppData), options?: { fromRemote?: boolean }) => {
       setData((prev) => {
         const next = typeof updater === 'function' ? updater(prev) : updater;
+        const uid = userIdRef.current;
+        if (!persistEnabledRef.current || !uid) {
+          return next;
+        }
         if (!options?.fromRemote && hasSyncableChange(prev, next)) {
           const meta: SyncMeta = {
             ...syncMetaRef.current,
             lastLocalChangeAt: new Date().toISOString(),
+            syncUserId: uid ?? syncMetaRef.current.syncUserId,
           };
           syncMetaRef.current = meta;
           setSyncMeta(meta);
-          AsyncStorage.setItem(SYNC_META_KEY, JSON.stringify(meta));
+          AsyncStorage.setItem(syncMetaKey(uid), JSON.stringify(meta));
         }
-        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        AsyncStorage.setItem(storageKey(uid), JSON.stringify(next));
         return next;
       });
     },
@@ -287,6 +398,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [persist]
   );
 
+  const clearCompletedPlanItems = useCallback(
+    (category: PlanCategory, subcategory?: string, tripName?: string) => {
+      const normalizeSub = (item: PlanItem) => {
+        if (category !== 'travel_ideas' || subcategory === undefined) return item.subcategory;
+        const key = item.subcategory;
+        if (!key || key === 'ideas' || key === 'itinerary') return 'places';
+        return key;
+      };
+
+      persist((prev) => ({
+        ...prev,
+        planItems: prev.planItems.filter(
+          (p) =>
+            !p.completed ||
+            p.category !== category ||
+            (subcategory !== undefined && normalizeSub(p) !== subcategory) ||
+            (tripName !== undefined && (p.tripName?.trim() ?? '') !== tripName)
+        ),
+      }));
+    },
+    [persist]
+  );
+
   const togglePlanItem = useCallback(
     (id: string) => {
       persist((prev) => ({
@@ -361,18 +495,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const subs = mergePlanSubcategories(prev.planSubcategories);
         const list = subs[category] ?? [];
         const target = list.find((s) => s.key === key);
-        if (!target || list.length <= 1) return prev;
+        if (!target) return prev;
+        if (category !== 'weekly_checklist' && list.length <= 1) return prev;
 
-        const fallback = list.find((s) => s.key !== key)?.key ?? defaultSubcategory(category, subs);
+        const remaining = list.filter((s) => s.key !== key);
+        const fallback = remaining[0]?.key;
         return {
           ...prev,
           planSubcategories: {
             ...subs,
-            [category]: list.filter((s) => s.key !== key),
+            [category]: remaining,
           },
           planItems: prev.planItems.map((item) =>
             item.category === category && item.subcategory === key
-              ? { ...item, subcategory: fallback }
+              ? { ...item, ...(fallback ? { subcategory: fallback } : {}) }
               : item
           ),
         };
@@ -413,6 +549,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             ...DEFAULT_WEEKLY_GOALS,
             ...payload.weeklyGoals,
           }),
+          crossedOffDates: payload.crossedOffDates ?? prev.crossedOffDates ?? [],
         };
         if (!hasSyncableChange(prev, next)) {
           return prev;
@@ -432,6 +569,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       planSubcategories: mergePlanSubcategories(data.planSubcategories),
       eventCategories,
       weeklyGoals: syncWeeklyGoals(eventCategories, data.weeklyGoals),
+      crossedOffDates: data.crossedOffDates ?? [],
       updatedAt: syncMetaRef.current.lastLocalChangeAt,
     };
   }, [data]);
@@ -446,10 +584,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSyncMeta((prev) => {
       const next: SyncMeta = { ...prev, lastAppliedRemoteAt: iso };
       syncMetaRef.current = next;
-      AsyncStorage.setItem(SYNC_META_KEY, JSON.stringify(next));
+      const uid = userIdRef.current;
+      if (uid) AsyncStorage.setItem(syncMetaKey(uid), JSON.stringify(next));
       return next;
     });
   }, []);
+
+  const resetSyncScope = useCallback((uid: string, coupleId: string | null) => {
+    const next: SyncMeta = {
+      ...syncMetaRef.current,
+      syncUserId: uid,
+      syncCoupleId: coupleId,
+      lastLocalChangeAt: new Date(0).toISOString(),
+    };
+    syncMetaRef.current = next;
+    setSyncMeta(next);
+    AsyncStorage.setItem(syncMetaKey(uid), JSON.stringify(next));
+  }, []);
+
+  const resetScopeLocalFields = useCallback(() => {
+    persist(
+      (prev) => ({
+        ...prev,
+        reminders: [],
+        profile: DEFAULT_PROFILE,
+      }),
+      { fromRemote: true }
+    );
+  }, [persist]);
 
   const addReminder = useCallback(
     async (input: AddReminderInput, mySlot?: 1 | 2 | null) => {
@@ -794,6 +956,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addPlanItem,
       updatePlanItem,
       deletePlanItem,
+      clearCompletedPlanItems,
       togglePlanItem,
       getPlanItemsByCategory,
       getPlanSubcategories,
@@ -811,6 +974,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       touchAppStateChange,
       getSyncMeta,
       setLastAppliedRemoteAt,
+      resetSyncScope,
+      resetScopeLocalFields,
+      setRemoteSyncReady,
+      storageReady,
       addExpense,
       updateExpense,
       deleteExpense,
@@ -839,6 +1006,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addPlanItem,
       updatePlanItem,
       deletePlanItem,
+      clearCompletedPlanItems,
       togglePlanItem,
       getPlanItemsByCategory,
       getPlanSubcategories,
@@ -856,6 +1024,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       touchAppStateChange,
       getSyncMeta,
       setLastAppliedRemoteAt,
+      resetSyncScope,
+      resetScopeLocalFields,
+      setRemoteSyncReady,
+      storageReady,
       addExpense,
       updateExpense,
       deleteExpense,

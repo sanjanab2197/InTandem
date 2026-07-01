@@ -14,13 +14,14 @@ import {
 
 import CalendarDatePicker from '@/components/CalendarDatePicker';
 import {
+  eventHasCategory,
   getCategoryLabel,
   getSubcategoryLabel,
   resolveEventColor,
 } from '@/constants/eventCategories';
 import { Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
-import { CalendarEvent, EventCategoryConfig, Participant } from '@/types';
+import { CalendarEvent, Participant } from '@/types';
 import { formatEventDateRange, isMultiDayEvent } from '@/utils/calendarEvents';
 import { firstName, participantLabel } from '@/utils/participant';
 
@@ -69,16 +70,14 @@ interface EventDetailModalProps {
   onDelete: (id: string) => void;
 }
 
-function buildEmptyForm(categories: EventCategoryConfig[], startDate: string) {
-  const category = categories[0];
-  const subcategory = category?.subcategories[0]?.key ?? 'general';
+function buildEmptyForm(startDate: string) {
   return {
     title: '',
     time: '',
     durationHours: '',
     notes: '',
-    category: category?.key ?? 'entertainment',
-    subcategory,
+    category: '',
+    subcategory: '',
     participant: 'together' as Participant,
     startDate,
     endDate: startDate,
@@ -95,27 +94,30 @@ export default function EventDetailModal({
   onDelete,
 }: EventDetailModalProps) {
   const { profile, eventCategories } = useApp();
-  const emptyForm = buildEmptyForm(eventCategories, date);
+  const emptyForm = buildEmptyForm(date);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CalendarEvent | null>(null);
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
     if (!visible) {
       setEditing(null);
       setIsCreating(false);
-      setForm(buildEmptyForm(eventCategories, date));
+      setDeleteTarget(null);
+      setForm(buildEmptyForm(date));
     }
-  }, [visible, eventCategories, date]);
+  }, [visible, date]);
 
-  const selectedCategory =
-    eventCategories.find((c) => c.key === form.category) ?? eventCategories[0];
+  const selectedCategory = form.category
+    ? eventCategories.find((c) => c.key === form.category)
+    : undefined;
   const subcategories = selectedCategory?.subcategories ?? [];
 
   const openCreate = () => {
     setIsCreating(true);
     setEditing(null);
-    setForm(buildEmptyForm(eventCategories, date));
+    setForm(buildEmptyForm(date));
   };
 
   const openEdit = (event: CalendarEvent) => {
@@ -127,8 +129,8 @@ export default function EventDetailModal({
       time: event.time ?? '',
       durationHours: event.durationMinutes ? String(event.durationMinutes / 60) : '',
       notes: event.notes ?? '',
-      category: event.category,
-      subcategory: event.subcategory,
+      category: event.category ?? '',
+      subcategory: event.subcategory ?? '',
       participant: event.participant ?? 'together',
       startDate: event.date,
       endDate: multi ? (event.endDate ?? event.date) : event.date,
@@ -157,28 +159,22 @@ export default function EventDetailModal({
       time: form.time.trim() || undefined,
       durationMinutes: durationMinutes && !isNaN(durationMinutes) ? durationMinutes : undefined,
       notes: form.notes.trim() || undefined,
-      category: form.category,
-      subcategory: form.subcategory,
+      ...(form.category
+        ? { category: form.category, subcategory: form.subcategory || undefined }
+        : {}),
       participant: form.participant,
     });
     setEditing(null);
     setIsCreating(false);
-    setForm(buildEmptyForm(eventCategories, date));
+    setForm(buildEmptyForm(date));
   };
 
-  const handleDelete = (id: string) => {
-    Alert.alert('Delete event', 'Are you sure you want to delete this event?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          onDelete(id);
-          setEditing(null);
-          setIsCreating(false);
-        },
-      },
-    ]);
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    onDelete(deleteTarget.id);
+    setDeleteTarget(null);
+    setEditing(null);
+    setIsCreating(false);
   };
 
   const showForm = isCreating || editing;
@@ -298,6 +294,13 @@ export default function EventDetailModal({
 
               <Text style={styles.formLabel}>Category</Text>
               <View style={styles.chipRow}>
+                <Pressable
+                  style={[styles.chip, !form.category && styles.chipActive]}
+                  onPress={() => setForm({ ...form, category: '', subcategory: '' })}>
+                  <Text style={[styles.chipText, !form.category && styles.chipTextActive]}>
+                    None
+                  </Text>
+                </Pressable>
                 {eventCategories.map((cat) => (
                   <Pressable
                     key={cat.key}
@@ -319,20 +322,24 @@ export default function EventDetailModal({
                 ))}
               </View>
 
-              <Text style={styles.formLabel}>Subcategory</Text>
-              <View style={styles.chipRow}>
-                {subcategories.map((sub) => (
-                  <Pressable
-                    key={sub.key}
-                    style={[styles.chip, form.subcategory === sub.key && styles.chipActive]}
-                    onPress={() => setForm({ ...form, subcategory: sub.key })}>
-                    <Text
-                      style={[styles.chipText, form.subcategory === sub.key && styles.chipTextActive]}>
-                      {sub.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
+              {form.category ? (
+                <>
+                  <Text style={styles.formLabel}>Subcategory</Text>
+                  <View style={styles.chipRow}>
+                    {subcategories.map((sub) => (
+                      <Pressable
+                        key={sub.key}
+                        style={[styles.chip, form.subcategory === sub.key && styles.chipActive]}
+                        onPress={() => setForm({ ...form, subcategory: sub.key })}>
+                        <Text
+                          style={[styles.chipText, form.subcategory === sub.key && styles.chipTextActive]}>
+                          {sub.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              ) : null}
 
               <Text style={styles.formLabel}>Notes</Text>
               <TextInput
@@ -346,7 +353,7 @@ export default function EventDetailModal({
 
               <View style={styles.formActions}>
                 {editing && (
-                  <Pressable style={styles.deleteBtn} onPress={() => handleDelete(editing.id)}>
+                  <Pressable style={styles.deleteBtn} onPress={() => setDeleteTarget(editing)}>
                     <Text style={styles.deleteBtnText}>Delete</Text>
                   </Pressable>
                 )}
@@ -383,10 +390,14 @@ export default function EventDetailModal({
                             : `${event.durationMinutes} min`}
                         </Text>
                       ) : null}
-                      <Text style={styles.eventCategory}>
-                        {getCategoryLabel(eventCategories, event.category)} ·{' '}
-                        {getSubcategoryLabel(eventCategories, event.category, event.subcategory)}
-                      </Text>
+                      {eventHasCategory(event) ? (
+                        <Text style={styles.eventCategory}>
+                          {getCategoryLabel(eventCategories, event.category)}
+                          {event.subcategory
+                            ? ` · ${getSubcategoryLabel(eventCategories, event.category, event.subcategory)}`
+                            : ''}
+                        </Text>
+                      ) : null}
                       <Text style={styles.eventParticipant}>
                         {participantLabel(event.participant, profile)}
                       </Text>
@@ -400,6 +411,29 @@ export default function EventDetailModal({
           )}
         </ScrollView>
       </View>
+
+      <Modal
+        visible={deleteTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteTarget(null)}>
+        <Pressable style={styles.deleteOverlay} onPress={() => setDeleteTarget(null)}>
+          <Pressable style={styles.deletePopup} onPress={() => {}}>
+            <Text style={styles.deletePopupTitle}>Delete event?</Text>
+            <Text style={styles.deletePopupMessage}>
+              Remove "{deleteTarget?.title}"? This can't be undone.
+            </Text>
+            <View style={styles.deletePopupActions}>
+              <Pressable style={styles.deletePopupCancel} onPress={() => setDeleteTarget(null)}>
+                <Text style={styles.deletePopupCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.deletePopupConfirm} onPress={confirmDelete}>
+                <Text style={styles.deletePopupConfirmText}>Delete</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Modal>
   );
 }
@@ -605,4 +639,38 @@ const styles = StyleSheet.create({
     borderColor: '#E57373',
   },
   deleteBtnText: { color: '#E57373', fontSize: 16, fontWeight: '600' },
+  deleteOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  deletePopup: {
+    backgroundColor: Theme.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+  },
+  deletePopupTitle: { fontSize: 18, fontWeight: '700', color: Theme.text, marginBottom: 8 },
+  deletePopupMessage: { fontSize: 15, color: Theme.textSecondary, lineHeight: 22, marginBottom: 24 },
+  deletePopupActions: { flexDirection: 'row', gap: 12 },
+  deletePopupCancel: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Theme.border,
+  },
+  deletePopupCancelText: { fontSize: 15, fontWeight: '600', color: Theme.textSecondary },
+  deletePopupConfirm: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: '#E57373',
+  },
+  deletePopupConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

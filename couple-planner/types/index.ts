@@ -59,8 +59,8 @@ export interface CalendarEvent {
   time?: string;
   durationMinutes?: number;
   notes?: string;
-  category: EventCategory;
-  subcategory: string;
+  category?: EventCategory;
+  subcategory?: string;
   participant?: Participant;
 }
 
@@ -154,5 +154,6 @@ export interface AppStatePayload {
   planSubcategories?: PlanSubcategoriesByCategory;
   eventCategories?: EventCategoryConfig[];
   weeklyGoals: CategoryGoals;
+  crossedOffDates?: string[];
   updatedAt?: string;
 }

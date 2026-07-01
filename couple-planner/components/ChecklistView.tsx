@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Modal,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -23,10 +25,197 @@ interface ChecklistViewProps {
   subcategoryOptions: PlanSubcategory[];
   defaultSubcategoryKey?: string;
   defaultTripName?: string;
+  variant?: 'default' | 'store';
+  embedded?: boolean;
+  sectionLabel?: string;
   onToggle: (id: string) => void;
   onAdd: (input: AddPlanItemInput) => void;
   onEdit: (item: PlanItem) => void;
   onDelete: (id: string) => void;
+  onClearCompleted?: () => void;
+}
+
+const SWIPE_DELETE_WIDTH = 72;
+
+interface StoreSwipeRowProps {
+  item: PlanItem;
+  accent: string;
+  accentDark: string;
+  accentLight: string;
+  accentMuted: string;
+  isLast?: boolean;
+  isOpen: boolean;
+  isEditing: boolean;
+  editText: string;
+  onEditTextChange: (text: string) => void;
+  onOpen: () => void;
+  onClose: () => void;
+  onToggle: () => void;
+  onEditStart: () => void;
+  onEditSave: () => void;
+  onDelete: () => void;
+}
+
+function StoreSwipeRow({
+  item,
+  accent,
+  accentDark,
+  accentLight,
+  accentMuted,
+  isLast = false,
+  isOpen,
+  isEditing,
+  editText,
+  onEditTextChange,
+  onOpen,
+  onClose,
+  onToggle,
+  onEditStart,
+  onEditSave,
+  onDelete,
+}: StoreSwipeRowProps) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const dragStartX = useRef(0);
+  const isOpenRef = useRef(isOpen);
+
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 80,
+      }).start();
+      dragStartX.current = 0;
+    }
+  }, [isOpen, translateX]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > Math.abs(gesture.dy) && Math.abs(gesture.dx) > 4,
+      onMoveShouldSetPanResponderCapture: (_, gesture) =>
+        Math.abs(gesture.dx) > Math.abs(gesture.dy) && Math.abs(gesture.dx) > 4,
+      onPanResponderGrant: () => {
+        translateX.stopAnimation((value) => {
+          dragStartX.current = value;
+        });
+      },
+      onPanResponderMove: (_, gesture) => {
+        const next = Math.min(0, Math.max(-SWIPE_DELETE_WIDTH, dragStartX.current + gesture.dx));
+        translateX.setValue(next);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        const projected = dragStartX.current + gesture.dx;
+        const shouldOpen =
+          projected <= -SWIPE_DELETE_WIDTH / 2 || (gesture.vx < -0.3 && projected < 0);
+
+        if (shouldOpen) {
+          Animated.spring(translateX, {
+            toValue: -SWIPE_DELETE_WIDTH,
+            useNativeDriver: true,
+            friction: 8,
+            tension: 80,
+          }).start();
+          dragStartX.current = -SWIPE_DELETE_WIDTH;
+          onOpen();
+        } else {
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+            friction: 8,
+            tension: 80,
+          }).start();
+          dragStartX.current = 0;
+          onClose();
+        }
+      },
+      onPanResponderTerminate: () => {
+        const target = isOpenRef.current ? -SWIPE_DELETE_WIDTH : 0;
+        Animated.spring(translateX, {
+          toValue: target,
+          useNativeDriver: true,
+          friction: 8,
+          tension: 80,
+        }).start();
+        dragStartX.current = target;
+      },
+    })
+  ).current;
+
+  const handleDeletePress = () => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 80,
+    }).start();
+    dragStartX.current = 0;
+    onClose();
+    onDelete();
+  };
+
+  return (
+    <View style={styles.storeSwipeContainer}>
+      <View style={styles.storeSwipeDelete}>
+        <Pressable style={styles.storeSwipeDeleteBtn} onPress={handleDeletePress}>
+          <Text style={styles.storeSwipeDeleteText}>Delete</Text>
+        </Pressable>
+      </View>
+      <Animated.View
+        style={[
+          styles.storeSwipeForeground,
+          { backgroundColor: item.completed ? accentMuted : Theme.surface },
+          isEditing && { backgroundColor: accentLight },
+          { transform: [{ translateX }] },
+        ]}
+        {...(isEditing ? {} : panResponder.panHandlers)}>
+        <View style={[styles.storeRow, isLast && styles.storeRowLast, { borderBottomColor: Theme.border }]}>
+          <Pressable style={styles.storeCheckBtn} onPress={onToggle} hitSlop={4} disabled={isEditing}>
+            <View
+              style={[
+                styles.storeCheck,
+                { borderColor: `${accent}66` },
+                item.completed && { backgroundColor: accent, borderColor: accent },
+              ]}
+            />
+          </Pressable>
+          {isEditing ? (
+            <TextInput
+              style={[styles.storeEditInput, { color: Theme.text, borderColor: accent }]}
+              value={editText}
+              onChangeText={onEditTextChange}
+              autoFocus
+              selectTextOnFocus
+              placeholder="Item name"
+              placeholderTextColor={Theme.textSecondary}
+              onSubmitEditing={onEditSave}
+              onBlur={onEditSave}
+              returnKeyType="done"
+            />
+          ) : (
+            <Pressable
+              style={styles.storeTextArea}
+              onLongPress={onEditStart}
+              delayLongPress={400}>
+              <Text
+                style={[
+                  styles.storeItemText,
+                  item.completed && { textDecorationLine: 'line-through', color: `${accentDark}99` },
+                ]}
+                numberOfLines={2}>
+                {item.text}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </Animated.View>
+    </View>
+  );
 }
 
 export default function ChecklistView({
@@ -36,11 +225,16 @@ export default function ChecklistView({
   subcategoryOptions,
   defaultSubcategoryKey,
   defaultTripName,
+  variant = 'default',
+  embedded = false,
+  sectionLabel,
   onToggle,
   onAdd,
   onEdit,
   onDelete,
+  onClearCompleted,
 }: ChecklistViewProps) {
+  const isStore = variant === 'store';
   const showTripName = category === 'travel_ideas';
   const firstSubcategoryKey = subcategoryOptions[0]?.key ?? 'general';
 
@@ -74,8 +268,11 @@ export default function ChecklistView({
   const [editTripName, setEditTripName] = useState('');
   const [editSubcategory, setEditSubcategory] = useState(firstSubcategoryKey);
   const [deleteTarget, setDeleteTarget] = useState<PlanItem | null>(null);
+  const [storeEditId, setStoreEditId] = useState<string | null>(null);
+  const [storeEditText, setStoreEditText] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [openSwipeId, setOpenSwipeId] = useState<string | null>(null);
 
   useEffect(() => {
     if (defaultSubcategoryKey && defaultSubcategoryKey !== 'all') {
@@ -197,6 +394,141 @@ export default function ChecklistView({
   const accent = theme.accent;
   const accentDark = theme.accentDark;
   const accentLight = theme.accentLight;
+  const accentMuted = theme.accentMuted;
+
+  const storeItems = useMemo(() => {
+    if (!isStore) return items;
+    return [...items].sort((a, b) => {
+      if (a.completed !== b.completed) return a.completed ? 1 : -1;
+      return 0;
+    });
+  }, [items, isStore]);
+
+  const handleStoreAdd = () => {
+    if (!newText.trim() || !addSubcategory) return;
+    onAdd({
+      text: newText.trim(),
+      subcategory: addSubcategory,
+      tripName: defaultTripName?.trim() || undefined,
+    });
+    setNewText('');
+  };
+
+  const startStoreEdit = (item: PlanItem) => {
+    setOpenSwipeId(null);
+    setStoreEditId(item.id);
+    setStoreEditText(item.text);
+  };
+
+  const saveStoreEdit = () => {
+    if (!storeEditId) return;
+    const item = items.find((i) => i.id === storeEditId);
+    const trimmed = storeEditText.trim();
+    setStoreEditId(null);
+    setStoreEditText('');
+    if (!item || !trimmed || trimmed === item.text) return;
+    onEdit({ ...item, text: trimmed });
+  };
+
+  const handleStoreDelete = (id: string) => {
+    if (storeEditId === id) {
+      setStoreEditId(null);
+      setStoreEditText('');
+    }
+    setOpenSwipeId(null);
+    onDelete(id);
+  };
+
+  if (isStore) {
+    const canAdd = Boolean(addSubcategory);
+    const progressPct = items.length ? (completed / items.length) * 100 : 0;
+    const showProgress = items.length > 0 && completed > 0;
+
+    return (
+      <View style={embedded ? styles.storeEmbedded : [styles.storeCard, PlansUI.cardShadow]}>
+        {showProgress ? (
+          <View style={[styles.storeProgressTrack, { backgroundColor: accentLight }]}>
+            <View
+              style={[
+                styles.storeProgressFill,
+                { backgroundColor: accent, width: `${progressPct}%` },
+              ]}
+            />
+          </View>
+        ) : null}
+
+        <View style={styles.storeAddRow}>
+          <TextInput
+            style={styles.storeInput}
+            value={newText}
+            onChangeText={setNewText}
+            placeholder="Add an item…"
+            placeholderTextColor={Theme.textSecondary}
+            onSubmitEditing={handleStoreAdd}
+            returnKeyType="done"
+            editable={canAdd}
+          />
+          <Pressable
+            style={[
+              styles.storeAddBtn,
+              { backgroundColor: accent },
+              (!newText.trim() || !canAdd) && styles.addBtnDisabled,
+            ]}
+            onPress={handleStoreAdd}
+            disabled={!newText.trim() || !canAdd}>
+            <Text style={styles.storeAddBtnIcon}>+</Text>
+          </Pressable>
+        </View>
+
+        {items.length === 0 ? (
+          <View style={styles.storeEmptyWrap}>
+            <Text style={styles.storeEmptyTitle}>Nothing here yet</Text>
+            <Text style={styles.storeEmpty}>Type above to add your first item.</Text>
+          </View>
+        ) : (
+          <View style={styles.storeList}>
+            {storeItems.map((item, index) => (
+              <StoreSwipeRow
+                key={item.id}
+                item={item}
+                accent={accent}
+                accentDark={accentDark}
+                accentLight={accentLight}
+                accentMuted={accentMuted}
+                isLast={index === storeItems.length - 1}
+                isOpen={openSwipeId === item.id}
+                isEditing={storeEditId === item.id}
+                editText={storeEditId === item.id ? storeEditText : item.text}
+                onEditTextChange={setStoreEditText}
+                onOpen={() => setOpenSwipeId(item.id)}
+                onClose={() => setOpenSwipeId((id) => (id === item.id ? null : id))}
+                onToggle={() => onToggle(item.id)}
+                onEditStart={() => startStoreEdit(item)}
+                onEditSave={saveStoreEdit}
+                onDelete={() => handleStoreDelete(item.id)}
+              />
+            ))}
+          </View>
+        )}
+
+        {completed > 0 && onClearCompleted ? (
+          <Pressable
+            style={styles.clearDoneBtn}
+            onPress={() => onClearCompleted()}>
+            <Text style={[styles.clearDoneText, { color: accent }]}>
+              Clear done
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {items.length > 0 ? (
+          <Text style={styles.storeHint}>
+            Tap to check off · hold to edit · swipe left to delete
+          </Text>
+        ) : null}
+      </View>
+    );
+  }
 
   const renderItem = (item: PlanItem, inTravelSection = false) => {
     const subLabel = inTravelSection ? undefined : labelForKey(item.subcategory);
@@ -824,4 +1156,168 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   popupConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  storeCard: {
+    marginTop: 8,
+    borderRadius: 18,
+    padding: 16,
+    backgroundColor: Theme.surface,
+    borderWidth: 1,
+    borderColor: Theme.border,
+  },
+  storeEmbedded: {
+    marginTop: 0,
+  },
+  storeProgressTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 14,
+  },
+  storeProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  storeAddRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 4,
+    paddingLeft: 14,
+    backgroundColor: Theme.background,
+  },
+  storeInput: {
+    flex: 1,
+    fontSize: 16,
+    color: Theme.text,
+    paddingVertical: 10,
+  },
+  storeAddBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storeAddBtnIcon: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '500',
+    lineHeight: 24,
+    marginTop: -1,
+  },
+  storeAddBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  storeEmptyWrap: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+  },
+  storeEmptyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Theme.text,
+    marginBottom: 4,
+  },
+  storeList: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: Theme.background,
+  },
+  storeSwipeContainer: {
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  storeSwipeDelete: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: SWIPE_DELETE_WIDTH,
+    backgroundColor: PlansUI.delete,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  storeSwipeDeleteBtn: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  storeSwipeDeleteText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  storeSwipeForeground: {
+    backgroundColor: Theme.surface,
+  },
+  storeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingLeft: 14,
+    paddingRight: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  storeRowLast: {
+    borderBottomWidth: 0,
+  },
+  storeCheckBtn: {
+    paddingVertical: 12,
+    paddingRight: 14,
+  },
+  storeTextArea: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 12,
+    minWidth: 0,
+  },
+  storeEditInput: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 22,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    backgroundColor: Theme.surface,
+    minWidth: 0,
+  },
+  storeCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    flexShrink: 0,
+  },
+  storeItemText: {
+    flex: 1,
+    fontSize: 16,
+    color: Theme.text,
+    lineHeight: 22,
+  },
+  storeEmpty: {
+    fontSize: 14,
+    color: Theme.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  storeHint: {
+    fontSize: 11,
+    color: Theme.textSecondary,
+    textAlign: 'center',
+    marginTop: 14,
+    opacity: 0.8,
+    letterSpacing: 0.2,
+  },
+  clearDoneBtn: {
+    marginTop: 14,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  clearDoneText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });

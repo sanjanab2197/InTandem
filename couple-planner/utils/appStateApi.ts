@@ -9,6 +9,7 @@ interface AppStateRow {
   plan_subcategories: AppStatePayload['planSubcategories'];
   event_categories: AppStatePayload['eventCategories'];
   weekly_goals: AppStatePayload['weeklyGoals'];
+  crossed_off_dates?: AppStatePayload['crossedOffDates'];
   updated_at: string;
 }
 
@@ -20,6 +21,7 @@ function rowToPayload(row: AppStateRow): AppStatePayload {
     planSubcategories: row.plan_subcategories ?? undefined,
     eventCategories: row.event_categories ?? undefined,
     weeklyGoals: row.weekly_goals ?? {},
+    crossedOffDates: row.crossed_off_dates ?? [],
     updatedAt: row.updated_at,
   };
 }
@@ -32,6 +34,7 @@ function payloadToRow(payload: AppStatePayload, updatedBy?: string) {
     plan_subcategories: payload.planSubcategories ?? null,
     event_categories: payload.eventCategories ?? null,
     weekly_goals: payload.weeklyGoals,
+    crossed_off_dates: payload.crossedOffDates ?? [],
     updated_at: new Date().toISOString(),
     ...(updatedBy ? { updated_by: updatedBy } : {}),
   };

@@ -147,21 +147,28 @@ export function findEventCategory(
 
 export function getCategoryLabel(
   categories: EventCategoryConfig[],
-  key: string
+  key?: string
 ): string {
+  if (!key) return '';
   return findEventCategory(categories, key)?.label ?? key;
 }
 
 export function getSubcategoryLabel(
   categories: EventCategoryConfig[],
-  categoryKey: string,
-  subKey: string
+  categoryKey: string | undefined,
+  subKey: string | undefined
 ): string {
+  if (!categoryKey || !subKey) return '';
   const cat = findEventCategory(categories, categoryKey);
   return cat?.subcategories.find((s) => s.key === subKey)?.label ?? subKey;
 }
 
+export function eventHasCategory(event: CalendarEvent): boolean {
+  return Boolean(event.category);
+}
+
 export function resolveEventColor(event: CalendarEvent, categories: EventCategoryConfig[]): string {
+  if (!event.category) return Theme.textSecondary;
   const cat = findEventCategory(categories, event.category);
   if (!cat) return Theme.primary;
   const sub = cat.subcategories.find((s) => s.key === event.subcategory);

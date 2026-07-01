@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { getSupabase } from '@/lib/supabase';
 import { formatAuthError } from '@/utils/authErrors';
 import { getPasswordResetRedirectUri } from '@/utils/authRecovery';
+import { clearPendingInviteCode } from '@/utils/pendingInvite';
 
 interface AuthContextValue {
   session: Session | null;
@@ -70,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: error ? formatAuthError(error.message) : null };
       },
       signOut: async () => {
+        await clearPendingInviteCode();
         await getSupabase().auth.signOut();
       },
     }),

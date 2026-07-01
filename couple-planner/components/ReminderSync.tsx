@@ -79,13 +79,35 @@ export function useReminderRemoteActions() {
 export default function ReminderSync() {
   const { user } = useAuth();
   const { couple } = useCouple();
-  const { reminders, setReminders, replaceRemindersFromRemote } = useApp();
+  const { storageReady, reminders, setReminders, replaceRemindersFromRemote } = useApp();
   const syncingRef = useRef(false);
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextPushRef = useRef(false);
+  const pullCompletedRef = useRef(false);
+  const prevCoupleIdRef = useRef<string | undefined>(undefined);
+  const prevUserIdRef = useRef<string | undefined>(undefined);
 
   const coupleId = couple?.connected ? couple.coupleId : undefined;
+  const userId = user?.id;
   const mySlot = couple?.mySlot ?? null;
+
+  useEffect(() => {
+    if (prevUserIdRef.current !== userId) {
+      prevUserIdRef.current = userId;
+      pullCompletedRef.current = false;
+      skipNextPushRef.current = true;
+      replaceRemindersFromRemote([]);
+    }
+  }, [userId, replaceRemindersFromRemote]);
+
+  useEffect(() => {
+    if (prevCoupleIdRef.current !== coupleId) {
+      prevCoupleIdRef.current = coupleId;
+      pullCompletedRef.current = false;
+      skipNextPushRef.current = true;
+      replaceRemindersFromRemote([]);
+    }
+  }, [coupleId, replaceRemindersFromRemote]);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -107,11 +129,12 @@ export default function ReminderSync() {
   }, [reminders, mySlot, setReminders]);
 
   useEffect(() => {
-    if (!coupleId || syncingRef.current) return;
+    if (!storageReady || !coupleId || syncingRef.current) return;
     syncingRef.current = true;
     fetchCoupleReminders(coupleId)
       .then((remote) => {
         skipNextPushRef.current = true;
+        pullCompletedRef.current = true;
         replaceRemindersFromRemote(remote);
       })
       .catch((error) => {
@@ -120,10 +143,10 @@ export default function ReminderSync() {
       .finally(() => {
         syncingRef.current = false;
       });
-  }, [coupleId, replaceRemindersFromRemote]);
+  }, [storageReady, coupleId, replaceRemindersFromRemote]);
 
   useEffect(() => {
-    if (!coupleId || !user) return;
+    if (!coupleId || !user || !pullCompletedRef.current) return;
     if (skipNextPushRef.current) {
       skipNextPushRef.current = false;
       return;

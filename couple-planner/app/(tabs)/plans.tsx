@@ -1,13 +1,13 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import CategoryDropdown from '@/components/CategoryDropdown';
+import ChecklistListDropdown from '@/components/ChecklistListDropdown';
 import ChecklistView from '@/components/ChecklistView';
-import ChipPicker from '@/components/ChipPicker';
 import ExpenseflowView from '@/components/ExpenseflowView';
+import PlansHomeGrid from '@/components/PlansHomeGrid';
+import PlanSectionHeader from '@/components/PlanSectionHeader';
 import { useReminderRemoteActions } from '@/components/ReminderSync';
 import RemindersView from '@/components/RemindersView';
-import ScreenHeader from '@/components/ScreenHeader';
 import SubcategoryManager from '@/components/SubcategoryManager';
 import TravelPlanView from '@/components/TravelPlanView';
 import { getPlanTheme } from '@/constants/plansTheme';
@@ -20,10 +20,12 @@ export default function PlansScreen() {
   const { couple } = useCouple();
   const { syncAllToRemote, pushReminder, removeRemote } = useReminderRemoteActions();
   const {
+    loading,
     addPlanItem,
     updatePlanItem,
     togglePlanItem,
     deletePlanItem,
+    clearCompletedPlanItems,
     getPlanItemsByCategory,
     getPlanSubcategories,
     addPlanSubcategory,
@@ -37,29 +39,27 @@ export default function PlansScreen() {
     deleteExpense,
     settleExpense,
   } = useApp();
-  const [category, setCategory] = useState<PlanCategory>('weekly_checklist');
-  const [subcategoryFilter, setSubcategoryFilter] = useState('all');
-  const [tagFilter, setTagFilter] = useState('all');
-  const [showFilters, setShowFilters] = useState(false);
+  const [category, setCategory] = useState<PlanCategory | null>(null);
+  const [subcategoryFilter, setSubcategoryFilter] = useState('');
   const [manageSubcategories, setManageSubcategories] = useState(false);
+  const [travelInDetail, setTravelInDetail] = useState(false);
 
+  const isHome = category === null;
+  const isChecklist = category === 'weekly_checklist';
+  const isDateIdeas = category === 'date_ideas';
+  const isEnrichment = category === 'enrichment_ideas';
   const isReminders = category === 'reminders';
   const isExpenseflow = category === 'expenseflow';
   const isTravel = category === 'travel_ideas';
   const isStandaloneCategory = isReminders || isExpenseflow;
+  const usesStoreListUi = isChecklist || isDateIdeas || isEnrichment;
   const mySlot = couple?.mySlot ?? null;
 
-  const subcategoryOptions = isStandaloneCategory ? [] : getPlanSubcategories(category);
-  const allInCategory = getPlanItemsByCategory(category);
-  const categoryInfo = PLAN_CATEGORIES.find((c) => c.key === category)!;
-  const planTheme = getPlanTheme(category);
+  const subcategoryOptions = category && !isStandaloneCategory ? getPlanSubcategories(category) : [];
+  const allInCategory = category ? getPlanItemsByCategory(category) : [];
+  const categoryInfo = category ? PLAN_CATEGORIES.find((c) => c.key === category)! : null;
+  const planTheme = category ? getPlanTheme(category) : getPlanTheme('weekly_checklist');
   const firstSubcategoryKey = subcategoryOptions[0]?.key;
-
-  const availableTags = useMemo(() => {
-    const tags = new Set<string>();
-    allInCategory.forEach((item) => item.tags?.forEach((t) => tags.add(t)));
-    return Array.from(tags).sort();
-  }, [allInCategory]);
 
   const filteredItems = useMemo(() => {
     return allInCategory.filter((item) => {
@@ -71,29 +71,58 @@ export default function PlansScreen() {
         subcategoryFilter === 'all' ||
         subKey === subcategoryFilter ||
         (!subKey && subcategoryFilter === firstSubcategoryKey);
-      const tagOk = tagFilter === 'all' || item.tags?.includes(tagFilter);
-      return subOk && tagOk;
+      return subOk;
     });
-  }, [allInCategory, subcategoryFilter, tagFilter, firstSubcategoryKey]);
-
-  const hasActiveFilters = subcategoryFilter !== 'all' || tagFilter !== 'all';
-
-  const activeFilterSummary = useMemo(() => {
-    const parts: string[] = [];
-    if (subcategoryFilter !== 'all') {
-      const label = subcategoryOptions.find((s) => s.key === subcategoryFilter)?.label;
-      if (label) parts.push(label);
-    }
-    if (tagFilter !== 'all') parts.push(`#${tagFilter}`);
-    return parts.join(' · ');
-  }, [subcategoryFilter, tagFilter, subcategoryOptions]);
+  }, [allInCategory, subcategoryFilter, firstSubcategoryKey]);
 
   const handleCategoryChange = (next: PlanCategory) => {
     setCategory(next);
-    setSubcategoryFilter('all');
-    setTagFilter('all');
-    setShowFilters(false);
+    setSubcategoryFilter(
+      next === 'weekly_checklist' || next === 'date_ideas' || next === 'enrichment_ideas' ? '' : 'all'
+    );
   };
+
+  const goToOrganizer = () => {
+    setCategory(null);
+    setSubcategoryFilter('');
+    setManageSubcategories(false);
+    setTravelInDetail(false);
+  };
+
+  const handleTravelViewChange = useCallback((view: 'grid' | 'detail') => {
+    setTravelInDetail(view === 'detail');
+  }, []);
+
+  useEffect(() => {
+    if (!usesStoreListUi) return;
+    if (subcategoryOptions.length === 0) {
+      if (subcategoryFilter) setSubcategoryFilter('');
+      return;
+    }
+    if (!subcategoryOptions.some((s) => s.key === subcategoryFilter)) {
+      setSubcategoryFilter(subcategoryOptions[0].key);
+    }
+  }, [usesStoreListUi, subcategoryOptions, subcategoryFilter]);
+
+  const sectionHint = isChecklist
+    ? 'Pick a list, add items, and check them off when done'
+    : isTravel
+    ? 'Tap a trip to organize places, packing, and budget'
+    : isReminders
+    ? 'Set shared reminders for you and your partner'
+    : isExpenseflow
+    ? 'Track shared expenses and settle up'
+    : usesStoreListUi
+    ? 'Pick a category, add ideas, and check them off when done'
+    : 'Add and organize your ideas';
+
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color={Theme.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -102,60 +131,33 @@ export default function PlansScreen() {
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
         keyboardShouldPersistTaps="handled">
-        <ScreenHeader
-          hint={
-            isTravel
-              ? 'Pick a trip from the list, then use sections to organize places, packing, and budget'
-              : 'Switch lists to track ideas, reminders, and expenses'
-          }
-        />
-
-        <CategoryDropdown selected={category} onSelect={handleCategoryChange} />
-
-        {!isStandaloneCategory && !isTravel && (
+        {isHome ? (
+          <PlansHomeGrid onSelect={handleCategoryChange} />
+        ) : (
           <>
-            <Pressable style={styles.filtersToggle} onPress={() => setShowFilters(!showFilters)}>
-              <Text style={styles.filtersToggleText}>
-                {showFilters ? 'Hide filters' : 'Filter & organize'}
-              </Text>
-              {!showFilters && hasActiveFilters && (
-                <Text style={[styles.filtersActive, { color: planTheme.accentDark }]}>
-                  {activeFilterSummary}
-                </Text>
-              )}
-              <Text style={[styles.filtersChevron, { color: Theme.primary }]}>
-                {showFilters ? '▴' : '▾'}
-              </Text>
-            </Pressable>
+        {!(isTravel && travelInDetail) ? (
+          <PlanSectionHeader
+            category={category!}
+            theme={planTheme}
+            title={categoryInfo!.label}
+            hint={sectionHint}
+            onBack={goToOrganizer}
+          />
+        ) : null}
 
-            {showFilters && (
-              <View style={styles.filtersPanel}>
-                <ChipPicker
-                  options={subcategoryOptions}
-                  selected={subcategoryFilter}
-                  onSelect={setSubcategoryFilter}
-                  includeAll
-                  accentColor={planTheme.accent}
-                  accentLight={planTheme.accentLight}
-                />
-                {availableTags.length > 0 && (
-                  <ChipPicker
-                    options={availableTags.map((tag) => ({ key: tag, label: `#${tag}` }))}
-                    selected={tagFilter}
-                    onSelect={setTagFilter}
-                    includeAll
-                    accentColor={planTheme.accent}
-                    accentLight={planTheme.accentLight}
-                  />
-                )}
-                <Pressable style={styles.manageBtn} onPress={() => setManageSubcategories(true)}>
-                  <Text style={[styles.manageBtnText, { color: planTheme.accentDark }]}>
-                    Edit subcategories
-                  </Text>
-                </Pressable>
-              </View>
-            )}
-          </>
+        {usesStoreListUi && subcategoryOptions.length > 0 && (
+          <View style={styles.checklistSections}>
+            <ChecklistListDropdown
+              options={subcategoryOptions}
+              selected={subcategoryFilter}
+              onSelect={setSubcategoryFilter}
+              onManageLists={() => setManageSubcategories(true)}
+              theme={planTheme}
+              menuTitle={isChecklist ? 'Lists' : 'Categories'}
+              manageLabel={isChecklist ? '+ Add / edit list' : '+ Add / edit category'}
+              placeholder={isChecklist ? 'Choose list' : 'Choose category'}
+            />
+          </View>
         )}
 
         {isReminders ? (
@@ -186,39 +188,64 @@ export default function PlansScreen() {
             theme={planTheme}
             sections={subcategoryOptions}
             onToggle={togglePlanItem}
-            onAdd={(input) => addPlanItem(category, input)}
+            onAdd={(input) => addPlanItem(category!, input)}
             onEdit={updatePlanItem}
             onDelete={deletePlanItem}
+            onClearCompleted={(tripName, sectionKey) =>
+              clearCompletedPlanItems('travel_ideas', sectionKey, tripName)
+            }
             onEditSections={() => setManageSubcategories(true)}
+            onViewChange={handleTravelViewChange}
           />
-        ) : (
+        ) : usesStoreListUi && subcategoryOptions.length === 0 && isChecklist ? (
+          <View style={styles.checklistEmpty}>
+            <Text style={styles.checklistEmptyTitle}>No lists yet</Text>
+            <Text style={styles.checklistEmptyBody}>
+              Create lists like Groceries or Errands — only the ones you need.
+            </Text>
+            <Pressable
+              style={[styles.checklistEmptyBtn, { backgroundColor: planTheme.accent }]}
+              onPress={() => setManageSubcategories(true)}>
+              <Text style={styles.checklistEmptyBtnText}>+ Add / edit list</Text>
+            </Pressable>
+          </View>
+        ) : usesStoreListUi ? (
           <ChecklistView
+            variant="store"
             items={filteredItems}
-            category={category}
+            category={category!}
             theme={planTheme}
             subcategoryOptions={subcategoryOptions}
             defaultSubcategoryKey={subcategoryFilter}
+            sectionLabel={subcategoryOptions.find((s) => s.key === subcategoryFilter)?.label}
             onToggle={togglePlanItem}
-            onAdd={(input) => addPlanItem(category, input)}
+            onAdd={(input) => addPlanItem(category!, input)}
             onEdit={updatePlanItem}
             onDelete={deletePlanItem}
+            onClearCompleted={() => clearCompletedPlanItems(category!, subcategoryFilter)}
           />
+        ) : null}
+          </>
         )}
       </ScrollView>
 
-      {!isStandaloneCategory && (
+      {category && !isStandaloneCategory && (
         <SubcategoryManager
           visible={manageSubcategories}
-          categoryLabel={categoryInfo.label}
+          categoryLabel={categoryInfo!.label}
           theme={planTheme}
           subcategories={subcategoryOptions}
-          title={isTravel ? 'Trip sections' : 'Subcategories'}
+          title={isChecklist ? 'Your lists' : isTravel ? 'Trip sections' : 'Categories'}
           subtitle={
-            isTravel
+            isChecklist
+              ? 'Add or remove checklist tabs — e.g. Groceries, Errands. Delete any you do not need.'
+              : isTravel
               ? 'Customize sections inside each trip — e.g. Camping gear, Packing, Budget. Add your own or rename any.'
-              : undefined
+              : 'Add or rename categories — e.g. Restaurants, Adventure. Delete any you do not need.'
           }
-          addPlaceholder={isTravel ? 'New section name' : 'New subcategory name'}
+          addPlaceholder={
+            isChecklist ? 'New list name' : isTravel ? 'New section name' : 'New category name'
+          }
           onClose={() => setManageSubcategories(false)}
           onAdd={(label) => addPlanSubcategory(category, label)}
           onUpdate={(key, label) => updatePlanSubcategory(category, key, label)}
@@ -231,34 +258,41 @@ export default function PlansScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.background },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.background },
   scroll: { padding: 20, paddingBottom: 40 },
-  filtersToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  filtersToggleText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Theme.primary,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  filtersActive: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'right',
-  },
-  filtersChevron: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  filtersPanel: {
-    marginTop: 2,
+  checklistSections: {
     marginBottom: 4,
   },
-  manageBtn: { alignSelf: 'flex-start', marginTop: 4, paddingVertical: 4 },
-  manageBtnText: { fontSize: 13, fontWeight: '600', color: Theme.primary },
+  checklistEmpty: {
+    marginTop: 24,
+    padding: 24,
+    alignItems: 'center',
+    backgroundColor: Theme.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Theme.border,
+  },
+  checklistEmptyTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Theme.text,
+    marginBottom: 8,
+  },
+  checklistEmptyBody: {
+    fontSize: 15,
+    color: Theme.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  checklistEmptyBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  checklistEmptyBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
 });

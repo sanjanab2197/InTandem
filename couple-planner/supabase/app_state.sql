@@ -9,6 +9,7 @@ create table if not exists public.couple_app_state (
   plan_subcategories jsonb,
   event_categories jsonb,
   weekly_goals jsonb not null default '{}'::jsonb,
+  crossed_off_dates jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now(),
   updated_by uuid references auth.users(id) on delete set null
 );
@@ -21,6 +22,7 @@ create table if not exists public.user_app_state (
   plan_subcategories jsonb,
   event_categories jsonb,
   weekly_goals jsonb not null default '{}'::jsonb,
+  crossed_off_dates jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
 
@@ -62,3 +64,9 @@ create index if not exists couple_app_state_updated_at_idx
 
 create index if not exists user_app_state_updated_at_idx
   on public.user_app_state (updated_at desc);
+
+alter table public.couple_app_state
+  add column if not exists crossed_off_dates jsonb not null default '[]'::jsonb;
+
+alter table public.user_app_state
+  add column if not exists crossed_off_dates jsonb not null default '[]'::jsonb;

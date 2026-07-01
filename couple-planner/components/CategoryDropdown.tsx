@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import PlanCategoryIcon from '@/components/PlanCategoryIcon';
 import { getPlanTheme } from '@/constants/plansTheme';
 import { PLAN_CATEGORIES, Theme } from '@/constants/Theme';
 import { PlanCategory } from '@/types';
@@ -20,7 +21,9 @@ export default function CategoryDropdown({ selected, onSelect }: CategoryDropdow
       <Pressable
         style={styles.trigger}
         onPress={() => setOpen(true)}>
-        <Text style={styles.triggerIconText}>{selectedTheme.icon}</Text>
+        <View style={[styles.triggerIconWrap, { backgroundColor: selectedTheme.accentLight }]}>
+          <PlanCategoryIcon category={selected} color={selectedTheme.accentDark} size={20} />
+        </View>
         <Text style={styles.triggerLabel}>{current.label}</Text>
         <Text style={styles.chevron}>▾</Text>
       </Pressable>
@@ -44,7 +47,7 @@ export default function CategoryDropdown({ selected, onSelect }: CategoryDropdow
                     setOpen(false);
                   }}>
                   <View style={[styles.menuIconWrap, { backgroundColor: theme.accentMuted }]}>
-                    <Text style={styles.menuIcon}>{theme.icon}</Text>
+                    <PlanCategoryIcon category={cat.key} color={theme.accentDark} size={18} />
                   </View>
                   <Text
                     style={[
@@ -78,7 +81,13 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.surface,
     gap: 10,
   },
-  triggerIconText: { fontSize: 18 },
+  triggerIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   triggerLabel: { flex: 1, fontSize: 16, fontWeight: '700', color: Theme.text },
   chevron: { fontSize: 14, fontWeight: '700', color: Theme.textSecondary },
   overlay: {
@@ -116,7 +125,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  menuIcon: { fontSize: 16 },
   menuText: { flex: 1, fontSize: 16, color: Theme.text },
   check: { fontSize: 16, fontWeight: '700' },
 });

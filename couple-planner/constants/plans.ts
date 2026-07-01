@@ -16,10 +16,11 @@ export const PLAN_CATEGORY_KEYS: PlanCategoryWithSubcategories[] = [
 
 export const PLAN_SUBCATEGORIES: Record<PlanCategoryWithSubcategories, PlanSubcategoryOption[]> = {
   weekly_checklist: [
-    { key: 'chores', label: 'Chores & Home' },
-    { key: 'meals', label: 'Meals & Groceries' },
-    { key: 'together', label: 'Together Time' },
-    { key: 'admin', label: 'Errands & Admin' },
+    { key: 'chores', label: 'Chores' },
+    { key: 'errands', label: 'Errands' },
+    { key: 'groceries', label: 'Groceries' },
+    { key: 'home', label: 'Home Improvements' },
+    { key: 'meals', label: 'Meals' },
   ],
   date_ideas: [
     { key: 'restaurants', label: 'Restaurants' },
@@ -40,6 +41,9 @@ export const PLAN_SUBCATEGORIES: Record<PlanCategoryWithSubcategories, PlanSubca
     { key: 'wellness', label: 'Wellness & Growth' },
   ],
 };
+
+/** Old preset checklist tabs removed from defaults — filtered out on merge. */
+export const LEGACY_WEEKLY_CHECKLIST_KEYS = new Set(['together', 'admin']);
 
 export function initPlanSubcategories(): PlanSubcategoriesByCategory {
   return Object.fromEntries(
@@ -83,7 +87,15 @@ export function mergePlanSubcategories(
   for (const category of PLAN_CATEGORY_KEYS) {
     const defaults = PLAN_SUBCATEGORIES[category];
     if (stored[category] !== undefined) {
-      merged[category] = mergeSubcategoryList(stored[category], defaults);
+      let list = mergeSubcategoryList(stored[category], defaults);
+      if (category === 'weekly_checklist') {
+        list = list.filter((s) => !LEGACY_WEEKLY_CHECKLIST_KEYS.has(s.key));
+        list = list.map((s) =>
+          s.key === 'home' && s.label === 'Home' ? { ...s, label: 'Home Improvements' } : s
+        );
+        list.sort((a, b) => a.label.localeCompare(b.label));
+      }
+      merged[category] = list;
     } else {
       merged[category] = defaults.map((s) => ({ ...s, builtIn: true }));
     }

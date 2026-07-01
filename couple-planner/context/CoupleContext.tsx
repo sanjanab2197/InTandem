@@ -43,9 +43,12 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const loadedForUserRef = useRef<string | null>(null);
+  const userIdRef = useRef<string | undefined>(user?.id);
+  userIdRef.current = user?.id;
 
   const syncLocalProfile = useCallback(
     (next: CoupleConnection) => {
+      if (!userIdRef.current || loadedForUserRef.current !== userIdRef.current) return;
       updateProfile({
         partner1Name: next.partner1Name,
         partner2Name: next.partner2Name,
@@ -73,9 +76,9 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const data = await fetchMyCouple(user);
+      loadedForUserRef.current = user.id;
       setCouple(data);
       syncLocalProfile(data);
-      loadedForUserRef.current = user.id;
     } catch (e) {
       setCouple(null);
       setError(e instanceof Error ? e.message : 'Could not load profile');
@@ -96,8 +99,9 @@ export function CoupleProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    loadedForUserRef.current = null;
+    setCouple(null);
     setLoading(true);
+    loadedForUserRef.current = null;
 
     let cancelled = false;
 
