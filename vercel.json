@@ -3,6 +3,14 @@
   "outputDirectory": "couple-planner/dist",
   "installCommand": "cd couple-planner && npm install",
   "framework": null,
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!_expo/|assets/|favicon\\.ico).*)",
