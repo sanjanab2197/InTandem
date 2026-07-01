@@ -7,21 +7,13 @@ import ChipPicker from '@/components/ChipPicker';
 import ExpenseflowView from '@/components/ExpenseflowView';
 import { useReminderRemoteActions } from '@/components/ReminderSync';
 import RemindersView from '@/components/RemindersView';
+import ScreenHeader from '@/components/ScreenHeader';
 import SubcategoryManager from '@/components/SubcategoryManager';
 import { getPlanTheme } from '@/constants/plansTheme';
 import { PLAN_CATEGORIES, Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 import { useCouple } from '@/context/CoupleContext';
 import { PlanCategory } from '@/types';
-
-const CATEGORY_HINTS: Record<PlanCategory, string> = {
-  weekly_checklist: 'Shared tasks and routines — group by chores, meals, and more.',
-  date_ideas: 'Your idea bank — restaurants, adventure, cozy nights in, and more.',
-  travel_ideas: 'Plan trips with packing lists, places, itineraries, and budget notes.',
-  enrichment_ideas: 'Books, courses, hobbies, and growth activities to explore together.',
-  reminders: 'Set date & time reminders — notify yourself, your partner, or both.',
-  expenseflow: 'Track shared expenses — split costs or record who owes whom.',
-};
 
 export default function PlansScreen() {
   const { couple } = useCouple();
@@ -47,6 +39,7 @@ export default function PlansScreen() {
   const [category, setCategory] = useState<PlanCategory>('weekly_checklist');
   const [subcategoryFilter, setSubcategoryFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
   const [manageSubcategories, setManageSubcategories] = useState(false);
 
   const isReminders = category === 'reminders';
@@ -77,10 +70,23 @@ export default function PlansScreen() {
     });
   }, [allInCategory, subcategoryFilter, tagFilter, firstSubcategoryKey]);
 
+  const hasActiveFilters = subcategoryFilter !== 'all' || tagFilter !== 'all';
+
+  const activeFilterSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (subcategoryFilter !== 'all') {
+      const label = subcategoryOptions.find((s) => s.key === subcategoryFilter)?.label;
+      if (label) parts.push(label);
+    }
+    if (tagFilter !== 'all') parts.push(`#${tagFilter}`);
+    return parts.join(' · ');
+  }, [subcategoryFilter, tagFilter, subcategoryOptions]);
+
   const handleCategoryChange = (next: PlanCategory) => {
     setCategory(next);
     setSubcategoryFilter('all');
     setTagFilter('all');
+    setShowFilters(false);
   };
 
   return (
@@ -90,60 +96,58 @@ export default function PlansScreen() {
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
         keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          <Text style={styles.title}>
-            <Text style={styles.titleHighlight}>Planner</Text>
-          </Text>
-          <View style={styles.titleAccent}>
-            <View style={[styles.accentMark, { backgroundColor: Theme.primary }]} />
-            <View style={[styles.accentMark, { backgroundColor: Theme.love.rose }]} />
-            <View style={[styles.accentMark, { backgroundColor: Theme.secondary }]} />
-          </View>
-          <Text style={styles.subtitle}>Shared plans, reminders, and expenses</Text>
-        </View>
+        <ScreenHeader
+          title="Planner"
+          hint="Switch lists to track ideas, reminders, and expenses"
+        />
 
         <CategoryDropdown selected={category} onSelect={handleCategoryChange} />
 
         {!isStandaloneCategory && (
           <>
-            <View style={styles.subcategoryHeader}>
-              <ChipPicker
-                label="Subcategory"
-                options={subcategoryOptions}
-                selected={subcategoryFilter}
-                onSelect={setSubcategoryFilter}
-                includeAll
-                accentColor={planTheme.accent}
-                accentLight={planTheme.accentLight}
-              />
-              <Pressable style={styles.manageBtn} onPress={() => setManageSubcategories(true)}>
-                <Text style={[styles.manageBtnText, { color: planTheme.accentDark }]}>Edit subcategories</Text>
-              </Pressable>
-            </View>
+            <Pressable style={styles.filtersToggle} onPress={() => setShowFilters(!showFilters)}>
+              <Text style={styles.filtersToggleText}>
+                {showFilters ? 'Hide filters' : 'Filter & organize'}
+              </Text>
+              {!showFilters && hasActiveFilters && (
+                <Text style={[styles.filtersActive, { color: planTheme.accentDark }]}>
+                  {activeFilterSummary}
+                </Text>
+              )}
+              <Text style={[styles.filtersChevron, { color: Theme.primary }]}>
+                {showFilters ? '▴' : '▾'}
+              </Text>
+            </Pressable>
 
-            {availableTags.length > 0 && (
-              <ChipPicker
-                label="Filter by tag"
-                options={availableTags.map((tag) => ({ key: tag, label: `#${tag}` }))}
-                selected={tagFilter}
-                onSelect={setTagFilter}
-                includeAll
-                accentColor={planTheme.accent}
-                accentLight={planTheme.accentLight}
-              />
+            {showFilters && (
+              <View style={styles.filtersPanel}>
+                <ChipPicker
+                  options={subcategoryOptions}
+                  selected={subcategoryFilter}
+                  onSelect={setSubcategoryFilter}
+                  includeAll
+                  accentColor={planTheme.accent}
+                  accentLight={planTheme.accentLight}
+                />
+                {availableTags.length > 0 && (
+                  <ChipPicker
+                    options={availableTags.map((tag) => ({ key: tag, label: `#${tag}` }))}
+                    selected={tagFilter}
+                    onSelect={setTagFilter}
+                    includeAll
+                    accentColor={planTheme.accent}
+                    accentLight={planTheme.accentLight}
+                  />
+                )}
+                <Pressable style={styles.manageBtn} onPress={() => setManageSubcategories(true)}>
+                  <Text style={[styles.manageBtnText, { color: planTheme.accentDark }]}>
+                    Edit subcategories
+                  </Text>
+                </Pressable>
+              </View>
             )}
           </>
         )}
-
-        <View style={[styles.hintCard, { backgroundColor: planTheme.accentMuted, borderLeftColor: planTheme.accent }]}>
-          <View style={[styles.hintIcon, { backgroundColor: planTheme.accentLight }]}>
-            <Text style={styles.hintIconText}>{planTheme.icon}</Text>
-          </View>
-          <View style={styles.hintContent}>
-            <Text style={[styles.hintTitle, { color: planTheme.accentDark }]}>{categoryInfo.label}</Text>
-            <Text style={[styles.hintText, { color: planTheme.accentDark }]}>{CATEGORY_HINTS[category]}</Text>
-          </View>
-        </View>
 
         {isReminders ? (
           <RemindersView
@@ -201,55 +205,33 @@ export default function PlansScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.background },
   scroll: { padding: 20, paddingBottom: 40 },
-  header: { marginBottom: 16 },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: Theme.text,
-    letterSpacing: -0.8,
-    fontFamily: 'Inter_700Bold',
-    lineHeight: 38,
-  },
-  titleHighlight: { color: Theme.primary },
-  titleAccent: {
+  filtersToggle: {
     flexDirection: 'row',
-    gap: 5,
-    marginTop: 10,
+    alignItems: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+    gap: 8,
   },
-  accentMark: {
-    width: 28,
-    height: 3,
-    borderRadius: 2,
-  },
-  subtitle: {
-    marginTop: 10,
-    fontSize: 14,
-    color: Theme.textSecondary,
-    lineHeight: 20,
+  filtersToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Theme.primary,
     fontFamily: 'Inter_600SemiBold',
   },
-  subcategoryHeader: { marginTop: 4 },
-  manageBtn: { alignSelf: 'flex-start', marginTop: 4, marginBottom: 4, paddingVertical: 4 },
-  manageBtnText: { fontSize: 13, fontWeight: '600', color: Theme.primary },
-  hintCard: {
-    flexDirection: 'row',
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 8,
+  filtersActive: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  filtersChevron: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  filtersPanel: {
+    marginTop: 2,
     marginBottom: 4,
-    alignItems: 'center',
-    borderLeftWidth: 4,
-    gap: 12,
   },
-  hintIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hintIconText: { fontSize: 18 },
-  hintContent: { flex: 1 },
-  hintTitle: { fontSize: 15, fontWeight: '700' },
-  hintText: { fontSize: 13, marginTop: 3, opacity: 0.85, lineHeight: 18 },
+  manageBtn: { alignSelf: 'flex-start', marginTop: 4, paddingVertical: 4 },
+  manageBtnText: { fontSize: 13, fontWeight: '600', color: Theme.primary },
 });

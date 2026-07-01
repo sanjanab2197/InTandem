@@ -74,6 +74,8 @@ export default function RemindersView({
   const [pickerDraft, setPickerDraft] = useState(() => new Date());
   const [editing, setEditing] = useState<Reminder | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Reminder | null>(null);
+  const [showPast, setShowPast] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const p1Name = firstName(profile.partner1Name);
   const p2Name = firstName(profile.partner2Name);
@@ -104,6 +106,7 @@ export default function RemindersView({
     setRepeatChoice('none');
     setEditing(null);
     setOpenMenu(null);
+    setShowAddForm(false);
   };
 
   const toggleMenu = (menu: 'date' | 'time') => {
@@ -127,6 +130,7 @@ export default function RemindersView({
     setRemindAt(when);
     setAssigneeChoice(assigneeToChoice(reminder.assignee, mySlot));
     setRepeatChoice(normalizeRepeat(reminder.repeat));
+    setShowAddForm(true);
   };
 
   const handleSave = async () => {
@@ -223,32 +227,33 @@ export default function RemindersView({
 
   return (
     <View style={styles.container}>
-      {upcoming.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Upcoming</Text>
-          {upcoming.map(renderReminder)}
-        </>
-      )}
+      {upcoming.length > 0 && upcoming.map(renderReminder)}
 
       {past.length > 0 && (
-        <>
-          <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>Past</Text>
-          {past.map(renderReminder)}
-        </>
-      )}
-
-      {reminders.length === 0 && (
-        <View style={[styles.empty, { backgroundColor: accentMuted, borderColor: accentLight }]}>
-          <Text style={styles.emptyEmoji}>{theme.icon}</Text>
-          <Text style={[styles.emptyText, { color: accentDark }]}>No reminders yet</Text>
-          <Text style={styles.emptySubtext}>
-            Set a date and time — we'll notify you on your phone
-          </Text>
+        <View style={styles.pastSection}>
+          <Pressable style={styles.pastToggle} onPress={() => setShowPast(!showPast)}>
+            <Text style={styles.pastToggleText}>Past ({past.length})</Text>
+            <Text style={[styles.pastChevron, { color: accent }]}>{showPast ? '▴' : '▾'}</Text>
+          </Pressable>
+          {showPast && past.map(renderReminder)}
         </View>
       )}
 
+      {reminders.length === 0 && (
+        <Text style={styles.emptyInline}>No reminders yet — tap below to add one</Text>
+      )}
+
+      {!showAddForm ? (
+        <Pressable
+          style={[styles.addTrigger, { borderColor: accentLight }]}
+          onPress={() => setShowAddForm(true)}>
+          <Text style={[styles.addTriggerText, { color: accent }]}>+ New reminder</Text>
+        </Pressable>
+      ) : (
       <View style={[styles.addCard, { borderColor: accentLight, backgroundColor: accentMuted }]}>
-        <Text style={[styles.addTitle, { color: accentDark }]}>{editing ? 'Edit reminder' : 'New reminder'}</Text>
+        {editing && (
+          <Text style={[styles.addTitle, { color: accentDark }]}>Edit reminder</Text>
+        )}
         <TextInput
           style={styles.input}
           value={text}
@@ -348,21 +353,20 @@ export default function RemindersView({
         </View>
         {couple?.connected && (
           <Text style={styles.syncHint}>
-            Partner reminders sync when connected — they'll get a notification on their phone too.
+            Partner reminders sync when connected.
           </Text>
         )}
 
         <View style={styles.formActions}>
-          {editing && (
-            <Pressable style={styles.cancelBtn} onPress={resetForm}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </Pressable>
-          )}
+          <Pressable style={styles.cancelBtn} onPress={resetForm}>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </Pressable>
           <Pressable style={[styles.saveBtn, { backgroundColor: accent }]} onPress={handleSave}>
             <Text style={styles.saveBtnText}>{editing ? 'Update' : 'Set reminder'}</Text>
           </Pressable>
         </View>
       </View>
+      )}
 
       <RepeatPickerSheet
         visible={repeatPickerOpen}
@@ -411,19 +415,32 @@ export default function RemindersView({
 }
 
 const styles = StyleSheet.create({
-  container: { marginTop: 16 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: Theme.textSecondary, marginBottom: 8 },
-  sectionTitleSpaced: { marginTop: 16 },
-  empty: {
+  container: { marginTop: 12 },
+  pastSection: { marginTop: 8 },
+  pastToggle: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 8,
+    paddingVertical: 8,
+    gap: 6,
   },
-  emptyEmoji: { fontSize: 40, marginBottom: 8 },
-  emptyText: { fontSize: 17, fontWeight: '700' },
-  emptySubtext: { fontSize: 14, color: Theme.textSecondary, marginTop: 4, textAlign: 'center' },
+  pastToggleText: { fontSize: 13, fontWeight: '600', color: Theme.textSecondary },
+  pastChevron: { fontSize: 11, fontWeight: '700' },
+  emptyInline: {
+    fontSize: 14,
+    color: Theme.textSecondary,
+    textAlign: 'center',
+    marginVertical: 16,
+  },
+  addTrigger: {
+    marginTop: 12,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    backgroundColor: Theme.surface,
+  },
+  addTriggerText: { fontSize: 15, fontWeight: '600' },
   card: {
     backgroundColor: Theme.surface,
     borderRadius: 14,
@@ -456,12 +473,12 @@ const styles = StyleSheet.create({
   editLink: { fontSize: 13, fontWeight: '600' },
   deleteLink: { fontSize: 13, fontWeight: '600', color: PlansUI.delete },
   addCard: {
-    marginTop: 20,
-    borderRadius: 16,
+    marginTop: 12,
+    borderRadius: 14,
     padding: 14,
-    borderWidth: 1.5,
+    borderWidth: 1,
   },
-  addTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
+  addTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
   input: {
     backgroundColor: Theme.background,
     borderRadius: 12,

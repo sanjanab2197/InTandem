@@ -4,6 +4,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import CalendarGrid from '@/components/CalendarGrid';
 import EventCategoryManager from '@/components/EventCategoryManager';
 import EventDetailModal from '@/components/EventDetailModal';
+import ScreenHeader from '@/components/ScreenHeader';
+import { Fonts } from '@/constants/Typography';
 import { Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 
@@ -51,23 +53,23 @@ export default function CalendarScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View style={styles.headerMain}>
-            <Text style={styles.title}>
-              Our <Text style={styles.titleHighlight}>Schedule</Text>
-            </Text>
-            <View style={styles.titleAccent}>
-              <View style={[styles.accentMark, { backgroundColor: Theme.primary }]} />
-              <View style={[styles.accentMark, { backgroundColor: Theme.love.rose }]} />
-              <View style={[styles.accentMark, { backgroundColor: Theme.secondary }]} />
-            </View>
-            <Text style={styles.subtitle}>Tap a date to view or edit plans</Text>
-          </View>
-
-          <Pressable style={styles.editLink} onPress={() => setManageCategories(true)}>
-            <Text style={styles.editLinkText}>Edit categories</Text>
-          </Pressable>
-        </View>
+        <ScreenHeader
+          title="Schedule"
+          hint="Tap a date to view or edit plans"
+          footer={
+            <Pressable
+              style={({ pressed }) => [styles.editCategories, pressed && styles.editCategoriesPressed]}
+              onPress={() => setManageCategories(true)}>
+              <View style={styles.editCategoriesBody}>
+                <Text style={styles.editCategoriesTitle}>Edit categories</Text>
+                <Text style={styles.editCategoriesDesc}>
+                  Customize event types, labels, and colors on your calendar
+                </Text>
+              </View>
+              <Text style={styles.editCategoriesArrow}>›</Text>
+            </Pressable>
+          }
+        />
 
         <CalendarGrid
           events={events}
@@ -115,53 +117,42 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.background },
   scroll: { padding: 20, paddingBottom: 40 },
-  header: {
+  editCategories: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  headerMain: { flex: 1, paddingRight: 12 },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: Theme.text,
-    letterSpacing: -0.8,
-    fontFamily: 'Inter_700Bold',
-    lineHeight: 38,
-  },
-  titleHighlight: { color: Theme.primary },
-  titleAccent: {
-    flexDirection: 'row',
-    gap: 5,
-    marginTop: 10,
-  },
-  accentMark: {
-    width: 28,
-    height: 3,
-    borderRadius: 2,
-  },
-  subtitle: {
-    marginTop: 10,
-    fontSize: 14,
-    color: Theme.textSecondary,
-    lineHeight: 20,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  editLink: {
-    marginTop: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    backgroundColor: Theme.primaryLight,
+    alignItems: 'center',
+    marginTop: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: Theme.surface,
     borderWidth: 1,
     borderColor: Theme.border,
   },
-  editLinkText: {
-    fontSize: 12,
-    fontWeight: '600',
+  editCategoriesPressed: {
+    backgroundColor: Theme.primaryLight,
+    borderColor: 'rgba(139, 111, 212, 0.25)',
+  },
+  editCategoriesBody: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  editCategoriesTitle: {
+    fontSize: 14,
+    fontFamily: Fonts.semiBold,
     color: Theme.primaryDark,
-    fontFamily: 'Inter_600SemiBold',
+    marginBottom: 2,
+  },
+  editCategoriesDesc: {
+    fontSize: 12,
+    fontFamily: Fonts.regular,
+    color: Theme.textSecondary,
+    lineHeight: 17,
+  },
+  editCategoriesArrow: {
+    fontSize: 22,
+    fontFamily: Fonts.medium,
+    color: Theme.primary,
+    marginTop: -1,
   },
   legend: {
     flexDirection: 'row',

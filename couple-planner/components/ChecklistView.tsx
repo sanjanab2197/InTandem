@@ -60,6 +60,8 @@ export default function ChecklistView({
   const [editTripName, setEditTripName] = useState('');
   const [editSubcategory, setEditSubcategory] = useState(firstSubcategoryKey);
   const [deleteTarget, setDeleteTarget] = useState<PlanItem | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   useEffect(() => {
     if (defaultSubcategoryKey && defaultSubcategoryKey !== 'all') {
@@ -92,6 +94,8 @@ export default function ChecklistView({
     });
     setNewText('');
     setNewTags('');
+    setShowAddForm(false);
+    setShowMoreOptions(false);
   };
 
   const startEdit = (item: PlanItem) => {
@@ -206,23 +210,23 @@ export default function ChecklistView({
           </View>
           <View style={styles.itemBody}>
             <Text style={[styles.itemText, item.completed && styles.itemTextDone]}>{item.text}</Text>
-            {(subLabel || item.tags?.length || item.tripName) && (
+            {(subLabel || (item.tags?.length ?? 0) > 0 || item.tripName) ? (
               <View style={styles.metaRow}>
-                {subLabel && (
+                {subLabel ? (
                   <Text style={[styles.subBadge, { color: accentDark, backgroundColor: accentLight }]}>
                     {subLabel}
                   </Text>
-                )}
-                {item.tripName && showTripName && (
+                ) : null}
+                {item.tripName && showTripName ? (
                   <Text style={styles.tripBadge}>{item.tripName}</Text>
-                )}
+                ) : null}
                 {item.tags?.map((tag) => (
                   <Text key={tag} style={styles.tagBadge}>
                     #{tag}
                   </Text>
                 ))}
               </View>
-            )}
+            ) : null}
           </View>
         </Pressable>
         <View style={styles.actions}>
@@ -240,9 +244,125 @@ export default function ChecklistView({
   return (
     <View style={styles.container}>
       {items.length > 0 && (
-        <Text style={[styles.progress, { color: accentDark }]}>
-          {completed} of {items.length} completed
-        </Text>
+        <View style={styles.progressBlock}>
+          <View style={[styles.progressTrack, { backgroundColor: accentLight }]}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  backgroundColor: accent,
+                  width: `${items.length ? (completed / items.length) * 100 : 0}%`,
+                },
+              ]}
+            />
+          </View>
+          <Text style={[styles.progressLabel, { color: accentDark }]}>
+            {completed} of {items.length} done
+          </Text>
+        </View>
+      )}
+
+      {!showAddForm ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.addTrigger,
+            { backgroundColor: theme.accentMuted, borderColor: accentLight },
+            pressed && { backgroundColor: accentLight },
+          ]}
+          onPress={() => setShowAddForm(true)}>
+          <View style={[styles.addIcon, { backgroundColor: accent }]}>
+            <Text style={styles.addIconText}>+</Text>
+          </View>
+          <Text style={[styles.addTriggerText, { color: accentDark }]}>Add item</Text>
+        </Pressable>
+      ) : (
+        <View style={[styles.addCard, PlansUI.cardShadow, { borderColor: accentLight }]}>
+          <View style={styles.addCardHeader}>
+            <Text style={[styles.addCardTitle, { color: accentDark }]}>New item</Text>
+            <Pressable
+              hitSlop={8}
+              style={styles.addCloseBtn}
+              onPress={() => {
+                setShowAddForm(false);
+                setShowMoreOptions(false);
+              }}>
+              <Text style={styles.addCloseText}>×</Text>
+            </Pressable>
+          </View>
+          <View style={styles.addRow}>
+            <TextInput
+              style={[styles.input, { borderColor: accentLight }]}
+              value={newText}
+              onChangeText={setNewText}
+              placeholder="What do you want to add?"
+              placeholderTextColor={Theme.textSecondary}
+              onSubmitEditing={handleAdd}
+              returnKeyType="done"
+              autoFocus
+            />
+            <Pressable
+              style={[
+                styles.addBtn,
+                { backgroundColor: accent },
+                !newText.trim() && styles.addBtnDisabled,
+              ]}
+              onPress={handleAdd}
+              disabled={!newText.trim()}>
+              <Text style={styles.addBtnText}>Add</Text>
+            </Pressable>
+          </View>
+          {subcategoryOptions.length > 1 ? (
+            <View style={styles.addChips}>
+              {subcategoryOptions.map((opt) => (
+                <Pressable
+                  key={opt.key}
+                  style={[
+                    styles.miniChip,
+                    addSubcategory === opt.key && {
+                      backgroundColor: accentLight,
+                      borderColor: accent,
+                    },
+                  ]}
+                  onPress={() => setAddSubcategory(opt.key)}>
+                  <Text
+                    style={[
+                      styles.miniChipText,
+                      addSubcategory === opt.key && { color: accentDark, fontWeight: '700' },
+                    ]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          {showMoreOptions || (showTripName && newTripName.trim().length > 0) ? (
+            <View style={styles.addExtras}>
+              {showTripName ? (
+                <TextInput
+                  style={styles.metaInput}
+                  value={newTripName}
+                  onChangeText={setNewTripName}
+                  placeholder="Trip name (e.g. Japan 2026)"
+                  placeholderTextColor={Theme.textSecondary}
+                />
+              ) : null}
+              <TextInput
+                style={styles.metaInput}
+                value={newTags}
+                onChangeText={setNewTags}
+                placeholder="Tags — comma separated"
+                placeholderTextColor={Theme.textSecondary}
+              />
+            </View>
+          ) : null}
+          {!showMoreOptions ? (
+            <Pressable onPress={() => setShowMoreOptions(true)}>
+              <Text style={[styles.moreLink, { color: accent }]}>
+                {showTripName ? 'Trip name & tags' : 'Tags & details'}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       )}
 
       {groupedItems.map(({ trip, items: tripItems }) => (
@@ -253,59 +373,6 @@ export default function ChecklistView({
           {tripItems.map(renderItem)}
         </View>
       ))}
-
-      <View style={[styles.addCard, { borderColor: accentLight, backgroundColor: theme.accentMuted }]}>
-        <Text style={[styles.addTitle, { color: accentDark }]}>Add item</Text>
-        <View style={styles.addChips}>
-          {subcategoryOptions.map((opt) => (
-            <Pressable
-              key={opt.key}
-              style={[
-                styles.miniChip,
-                addSubcategory === opt.key && { backgroundColor: accentLight, borderColor: accent },
-              ]}
-              onPress={() => setAddSubcategory(opt.key)}>
-              <Text
-                style={[
-                  styles.miniChipText,
-                  addSubcategory === opt.key && { color: accentDark, fontWeight: '700' },
-                ]}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        {showTripName && (
-          <TextInput
-            style={styles.metaInput}
-            value={newTripName}
-            onChangeText={setNewTripName}
-            placeholder="Trip name (e.g. Japan 2026)"
-            placeholderTextColor={Theme.textSecondary}
-          />
-        )}
-        <TextInput
-          style={styles.metaInput}
-          value={newTags}
-          onChangeText={setNewTags}
-          placeholder="Tags — optional, comma separated (e.g. romantic, budget)"
-          placeholderTextColor={Theme.textSecondary}
-        />
-        <View style={styles.addRow}>
-          <TextInput
-            style={styles.input}
-            value={newText}
-            onChangeText={setNewText}
-            placeholder="What do you want to add?"
-            placeholderTextColor={Theme.textSecondary}
-            onSubmitEditing={handleAdd}
-            returnKeyType="done"
-          />
-          <Pressable style={[styles.addBtn, { backgroundColor: accent }]} onPress={handleAdd}>
-            <Text style={styles.addBtnText}>+</Text>
-          </Pressable>
-        </View>
-      </View>
 
       <Modal
         visible={deleteTarget !== null}
@@ -339,10 +406,22 @@ export default function ChecklistView({
 }
 
 const styles = StyleSheet.create({
-  container: { marginTop: 16 },
-  progress: {
-    fontSize: 13,
+  container: { marginTop: 12 },
+  progressBlock: {
     marginBottom: 12,
+    gap: 6,
+  },
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  progressLabel: {
+    fontSize: 12,
     fontWeight: '600',
   },
   tripHeader: {
@@ -433,12 +512,67 @@ const styles = StyleSheet.create({
   },
   cancelBtnText: { color: Theme.textSecondary, fontWeight: '600' },
   addCard: {
-    marginTop: 16,
+    marginBottom: 14,
     borderRadius: 16,
     padding: 14,
-    borderWidth: 1.5,
+    borderWidth: 1,
+    backgroundColor: Theme.surface,
   },
-  addTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  addExtras: {
+    gap: 0,
+  },
+  addCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  addCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  addCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Theme.background,
+  },
+  addCloseText: {
+    fontSize: 20,
+    lineHeight: 22,
+    color: Theme.textSecondary,
+    fontWeight: '400',
+    marginTop: -1,
+  },
+  addTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+  },
+  addIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addIconText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '500',
+    lineHeight: 22,
+    marginTop: -1,
+  },
+  addTriggerText: { fontSize: 16, fontWeight: '600' },
+  moreLink: { fontSize: 13, fontWeight: '600' },
   addChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
   miniChip: {
     paddingHorizontal: 10,
@@ -459,25 +593,28 @@ const styles = StyleSheet.create({
     borderColor: Theme.border,
     marginBottom: 8,
   },
-  addRow: { flexDirection: 'row', gap: 8 },
+  addRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 10 },
   input: {
     flex: 1,
     backgroundColor: Theme.background,
     borderRadius: 12,
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 16,
     color: Theme.text,
     borderWidth: 1,
     borderColor: Theme.border,
   },
   addBtn: {
-    width: 48,
-    height: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 64,
   },
-  addBtnText: { color: '#fff', fontSize: 24, fontWeight: '300' },
+  addBtnDisabled: { opacity: 0.45 },
+  addBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',

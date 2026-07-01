@@ -3,6 +3,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Theme } from '@/constants/Theme';
+import { Fonts } from '@/constants/Typography';
 
 export default function AppHeaderBar() {
   const insets = useSafeAreaInsets();
@@ -87,7 +88,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   brand: {
-    fontFamily: 'Inter_700Bold',
+    fontFamily: Fonts.bold,
     fontSize: 26,
     letterSpacing: -0.7,
     color: Theme.text,
@@ -95,6 +96,7 @@ const styles = StyleSheet.create({
   },
   brandAccent: {
     color: Theme.primary,
+    fontFamily: Fonts.bold,
   },
   brandUnderline: {
     width: 36,

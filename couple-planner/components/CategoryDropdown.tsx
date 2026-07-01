@@ -18,13 +18,11 @@ export default function CategoryDropdown({ selected, onSelect }: CategoryDropdow
   return (
     <View>
       <Pressable
-        style={[styles.trigger, { borderColor: selectedTheme.accentLight, backgroundColor: selectedTheme.accentMuted }]}
+        style={styles.trigger}
         onPress={() => setOpen(true)}>
-        <View style={[styles.triggerIcon, { backgroundColor: selectedTheme.accentLight }]}>
-          <Text style={styles.triggerIconText}>{selectedTheme.icon}</Text>
-        </View>
-        <Text style={[styles.triggerLabel, { color: selectedTheme.accentDark }]}>{current.label}</Text>
-        <Text style={[styles.chevron, { color: selectedTheme.accent }]}>▾</Text>
+        <Text style={styles.triggerIconText}>{selectedTheme.icon}</Text>
+        <Text style={styles.triggerLabel}>{current.label}</Text>
+        <Text style={styles.chevron}>▾</Text>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -72,26 +70,17 @@ const styles = StyleSheet.create({
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1.5,
-    gap: 12,
-    shadowColor: '#3D3550',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: Theme.border,
+    backgroundColor: Theme.surface,
+    gap: 10,
   },
-  triggerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  triggerIconText: { fontSize: 16 },
-  triggerLabel: { flex: 1, fontSize: 17, fontWeight: '700' },
-  chevron: { fontSize: 16, fontWeight: '700' },
+  triggerIconText: { fontSize: 18 },
+  triggerLabel: { flex: 1, fontSize: 16, fontWeight: '700', color: Theme.text },
+  chevron: { fontSize: 14, fontWeight: '700', color: Theme.textSecondary },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',

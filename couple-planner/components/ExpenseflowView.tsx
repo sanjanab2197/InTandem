@@ -24,7 +24,7 @@ import {
   owedAmountForExpense,
   splitTypeLabel,
 } from '@/utils/expenseBalance';
-import { partitionExpenses, SETTLED_HISTORY_DAYS, settledAtDate } from '@/utils/expenseHistory';
+import { partitionExpenses, settledAtDate } from '@/utils/expenseHistory';
 import { firstName, participantLabel } from '@/utils/participant';
 
 interface ExpenseflowViewProps {
@@ -84,6 +84,7 @@ export default function ExpenseflowView({
   const [editing, setEditing] = useState<Expense | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const p1Name = firstName(profile.partner1Name);
   const p2Name = firstName(profile.partner2Name);
@@ -111,6 +112,7 @@ export default function ExpenseflowView({
     setPaidByChoice('me');
     setSplitType('split');
     setEditing(null);
+    setShowAddForm(false);
   };
 
   const openEdit = (expense: Expense) => {
@@ -120,6 +122,7 @@ export default function ExpenseflowView({
     setNotes(expense.notes ?? '');
     setPaidByChoice(paidByToChoice(expense.paidBy, mySlot));
     setSplitType(expense.splitType);
+    setShowAddForm(true);
   };
 
   const handleSave = () => {
@@ -298,18 +301,13 @@ export default function ExpenseflowView({
     <View style={styles.container}>
       {renderBalanceSummary()}
 
-      {unsettled.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Open</Text>
-          {unsettled.map((e) => renderExpense(e))}
-        </>
-      )}
+      {unsettled.length > 0 && unsettled.map((e) => renderExpense(e))}
 
       {settledHistory.length > 0 && (
         <View style={styles.historySection}>
           <Pressable style={styles.historyToggle} onPress={() => setHistoryOpen(!historyOpen)}>
             <Text style={styles.historyToggleText}>
-              History · last {SETTLED_HISTORY_DAYS} days ({settledHistory.length})
+              History ({settledHistory.length})
             </Text>
             <Text style={[styles.historyChevron, { color: accent }]}>{historyOpen ? '▴' : '▾'}</Text>
           </Pressable>
@@ -318,17 +316,20 @@ export default function ExpenseflowView({
       )}
 
       {unsettled.length === 0 && settledHistory.length === 0 && (
-        <View style={[styles.empty, { backgroundColor: accentMuted, borderColor: accentLight }]}>
-          <Text style={styles.emptyEmoji}>{theme.icon}</Text>
-          <Text style={[styles.emptyText, { color: accentDark }]}>No expenses yet</Text>
-          <Text style={styles.emptySubtext}>Track who paid and split costs like Splitwise</Text>
-        </View>
+        <Text style={styles.emptyInline}>No expenses yet — tap below to add one</Text>
       )}
 
+      {!showAddForm ? (
+        <Pressable
+          style={[styles.addTrigger, { borderColor: accentLight }]}
+          onPress={() => setShowAddForm(true)}>
+          <Text style={[styles.addTriggerText, { color: accent }]}>+ Add expense</Text>
+        </Pressable>
+      ) : (
       <View style={[styles.addCard, { borderColor: accentLight, backgroundColor: accentMuted }]}>
-        <Text style={[styles.addTitle, { color: accentDark }]}>
-          {editing ? 'Edit expense' : 'Add expense'}
-        </Text>
+        {editing && (
+          <Text style={[styles.addTitle, { color: accentDark }]}>Edit expense</Text>
+        )}
 
         <TextInput
           style={styles.input}
@@ -403,16 +404,15 @@ export default function ExpenseflowView({
         />
 
         <View style={styles.formActions}>
-          {editing && (
-            <Pressable style={styles.cancelBtn} onPress={resetForm}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </Pressable>
-          )}
+          <Pressable style={styles.cancelBtn} onPress={resetForm}>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </Pressable>
           <Pressable style={[styles.saveBtn, { backgroundColor: accent }]} onPress={handleSave}>
             <Text style={styles.saveBtnText}>{editing ? 'Update' : 'Add expense'}</Text>
           </Pressable>
         </View>
       </View>
+      )}
 
       <Modal
         visible={deleteTarget !== null}
@@ -446,41 +446,41 @@ export default function ExpenseflowView({
 }
 
 const styles = StyleSheet.create({
-  container: { marginTop: 16 },
+  container: { marginTop: 12 },
   balanceCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1.5,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
   },
   balanceLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   balanceAmount: { fontSize: 20, fontWeight: '800', marginTop: 6 },
   balanceHint: { fontSize: 12, color: Theme.textSecondary, marginTop: 6, lineHeight: 18 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: Theme.textSecondary, marginBottom: 8 },
-  historySection: { marginTop: 16, marginBottom: 8 },
+  historySection: { marginTop: 8 },
   historyToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Theme.surface,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Theme.border,
-    marginBottom: 8,
+    paddingVertical: 8,
+    gap: 6,
   },
-  historyToggleText: { fontSize: 14, fontWeight: '600', color: Theme.textSecondary },
-  historyChevron: { fontSize: 12, fontWeight: '700' },
-  empty: {
+  historyToggleText: { fontSize: 13, fontWeight: '600', color: Theme.textSecondary },
+  historyChevron: { fontSize: 11, fontWeight: '700' },
+  emptyInline: {
+    fontSize: 14,
+    color: Theme.textSecondary,
+    textAlign: 'center',
+    marginVertical: 16,
+  },
+  addTrigger: {
+    marginTop: 12,
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
-    paddingVertical: 32,
-    borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 8,
+    borderStyle: 'dashed',
+    backgroundColor: Theme.surface,
   },
-  emptyEmoji: { fontSize: 40, marginBottom: 8 },
-  emptyText: { fontSize: 17, fontWeight: '700' },
-  emptySubtext: { fontSize: 14, color: Theme.textSecondary, marginTop: 4, textAlign: 'center' },
+  addTriggerText: { fontSize: 15, fontWeight: '600' },
   card: {
     backgroundColor: Theme.surface,
     borderRadius: 14,
@@ -509,12 +509,12 @@ const styles = StyleSheet.create({
   editLink: { fontSize: 13, fontWeight: '600' },
   deleteLink: { fontSize: 13, fontWeight: '600', color: PlansUI.delete },
   addCard: {
-    marginTop: 20,
-    borderRadius: 16,
+    marginTop: 12,
+    borderRadius: 14,
     padding: 14,
-    borderWidth: 1.5,
+    borderWidth: 1,
   },
-  addTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
+  addTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
   input: {
     backgroundColor: Theme.background,
     borderRadius: 12,

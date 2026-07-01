@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Theme } from '@/constants/Theme';
 
 interface ChipPickerProps {
-  label: string;
+  label?: string;
   options: { key: string; label: string }[];
   selected: string;
   onSelect: (key: string) => void;
@@ -26,7 +26,7 @@ export default function ChipPicker({
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>{label}</Text>
+      {label ? <Text style={styles.label}>{label}</Text> : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {includeAll && (
           <Pressable

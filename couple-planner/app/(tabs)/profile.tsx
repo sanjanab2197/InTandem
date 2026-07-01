@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 
+import ScreenHeader from '@/components/ScreenHeader';
 import { Theme } from '@/constants/Theme';
 import { useAuth } from '@/context/AuthContext';
 import { useCouple } from '@/context/CoupleContext';
@@ -133,17 +134,11 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View>
-          <Text style={styles.title}>
-            <Text style={styles.titleHighlight}>Profile</Text>
-          </Text>
-          <View style={styles.titleAccent}>
-            <View style={[styles.accentMark, { backgroundColor: Theme.primary }]} />
-            <View style={[styles.accentMark, { backgroundColor: Theme.love.rose }]} />
-            <View style={[styles.accentMark, { backgroundColor: Theme.secondary }]} />
-          </View>
-          <Text style={styles.subtitle}>Your account and partner connection</Text>
-        </View>
+        <ScreenHeader
+          title="Profile"
+          hint="Manage your account and partner connection"
+          style={styles.header}
+        />
 
         {user?.email && (
           <View style={styles.accountCard}>
@@ -376,33 +371,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.background },
   scroll: { padding: 20, paddingBottom: 40 },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: Theme.text,
-    letterSpacing: -0.8,
-    fontFamily: 'Inter_700Bold',
-    lineHeight: 38,
-  },
-  titleHighlight: { color: Theme.primary },
-  titleAccent: {
-    flexDirection: 'row',
-    gap: 5,
-    marginTop: 10,
-  },
-  accentMark: {
-    width: 28,
-    height: 3,
-    borderRadius: 2,
-  },
-  subtitle: {
-    marginTop: 10,
-    marginBottom: 24,
-    fontSize: 14,
-    color: Theme.textSecondary,
-    lineHeight: 20,
-    fontFamily: 'Inter_600SemiBold',
-  },
+  header: { marginBottom: 24 },
   accountCard: {
     backgroundColor: Theme.surface,
     borderRadius: 16,

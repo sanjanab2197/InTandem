@@ -2,6 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import { Tabs } from 'expo-router';
 
 import AppHeaderBar from '@/components/AppHeaderBar';
+import { Fonts } from '@/constants/Typography';
 import { Theme } from '@/constants/Theme';
 
 export default function TabLayout() {
@@ -16,7 +17,7 @@ export default function TabLayout() {
           paddingTop: 4,
           height: 88,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 11, fontFamily: Fonts.semiBold },
         headerShown: true,
         header: () => <AppHeaderBar />,
       }}>
