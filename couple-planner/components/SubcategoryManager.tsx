@@ -17,6 +17,9 @@ interface SubcategoryManagerProps {
   categoryLabel: string;
   theme?: PlanCategoryTheme;
   subcategories: PlanSubcategory[];
+  title?: string;
+  subtitle?: string;
+  addPlaceholder?: string;
   onClose: () => void;
   onAdd: (label: string) => void;
   onUpdate: (key: string, label: string) => void;
@@ -28,6 +31,9 @@ export default function SubcategoryManager({
   categoryLabel,
   theme,
   subcategories,
+  title = 'Subcategories',
+  subtitle,
+  addPlaceholder = 'New subcategory name',
   onClose,
   onAdd,
   onUpdate,
@@ -41,6 +47,7 @@ export default function SubcategoryManager({
   const accent = theme?.accent ?? Theme.primary;
   const accentDark = theme?.accentDark ?? Theme.primaryDark;
   const accentLight = theme?.accentLight ?? Theme.primaryLight;
+  const namePlaceholder = addPlaceholder.replace(/^New /, '');
 
   const handleAdd = () => {
     const label = newLabel.trim();
@@ -71,9 +78,10 @@ export default function SubcategoryManager({
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
-          <Text style={styles.title}>Subcategories</Text>
+          <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>
-            Customize groups for {categoryLabel}. Defaults are included — add your own or rename any.
+            {subtitle ??
+              `Customize groups for ${categoryLabel}. Defaults are included — add your own or rename any.`}
           </Text>
 
           <View style={styles.list}>
@@ -85,7 +93,7 @@ export default function SubcategoryManager({
                     value={editLabel}
                     onChangeText={setEditLabel}
                     autoFocus
-                    placeholder="Subcategory name"
+                    placeholder={namePlaceholder}
                     placeholderTextColor={Theme.textSecondary}
                   />
                   <Pressable style={styles.iconBtn} onPress={saveEdit}>
@@ -123,7 +131,7 @@ export default function SubcategoryManager({
               style={styles.addInput}
               value={newLabel}
               onChangeText={setNewLabel}
-              placeholder="New subcategory name"
+              placeholder={addPlaceholder}
               placeholderTextColor={Theme.textSecondary}
               onSubmitEditing={handleAdd}
               returnKeyType="done"

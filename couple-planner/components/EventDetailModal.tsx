@@ -6,11 +6,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
 
+import CalendarDatePicker from '@/components/CalendarDatePicker';
 import {
   getCategoryLabel,
   getSubcategoryLabel,
@@ -19,7 +21,44 @@ import {
 import { Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 import { CalendarEvent, EventCategoryConfig, Participant } from '@/types';
+import { formatEventDateRange, isMultiDayEvent } from '@/utils/calendarEvents';
 import { firstName, participantLabel } from '@/utils/participant';
+
+interface DateFieldProps {
+  label: string;
+  value: string;
+  onChange: (dateStr: string) => void;
+  minimumDate?: Date;
+}
+
+function DateField({ label, value, onChange, minimumDate }: DateFieldProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <View style={styles.dateField}>
+      <Text style={styles.dateFieldLabel}>{label}</Text>
+      <Pressable style={styles.dateTrigger} onPress={() => setOpen(true)}>
+        <Text style={styles.dateTriggerText}>{format(parseISO(value), 'MMM d, yyyy')}</Text>
+        <Text style={styles.dateChevron}>▾</Text>
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.dateOverlay} onPress={() => setOpen(false)}>
+          <Pressable style={styles.dateMenu} onPress={() => {}}>
+            <Text style={styles.dateMenuTitle}>{label}</Text>
+            <CalendarDatePicker
+              value={parseISO(value)}
+              minimumDate={minimumDate}
+              onChange={(d) => onChange(format(d, 'yyyy-MM-dd'))}
+            />
+            <Pressable style={styles.dateDoneBtn} onPress={() => setOpen(false)}>
+              <Text style={styles.dateDoneText}>Done</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
 
 interface EventDetailModalProps {
   visible: boolean;
@@ -30,7 +69,7 @@ interface EventDetailModalProps {
   onDelete: (id: string) => void;
 }
 
-function buildEmptyForm(categories: EventCategoryConfig[]) {
+function buildEmptyForm(categories: EventCategoryConfig[], startDate: string) {
   const category = categories[0];
   const subcategory = category?.subcategories[0]?.key ?? 'general';
   return {
@@ -41,6 +80,9 @@ function buildEmptyForm(categories: EventCategoryConfig[]) {
     category: category?.key ?? 'entertainment',
     subcategory,
     participant: 'together' as Participant,
+    startDate,
+    endDate: startDate,
+    isMultiDay: false,
   };
 }
 
@@ -53,7 +95,7 @@ export default function EventDetailModal({
   onDelete,
 }: EventDetailModalProps) {
   const { profile, eventCategories } = useApp();
-  const emptyForm = buildEmptyForm(eventCategories);
+  const emptyForm = buildEmptyForm(eventCategories, date);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -62,9 +104,9 @@ export default function EventDetailModal({
     if (!visible) {
       setEditing(null);
       setIsCreating(false);
-      setForm(buildEmptyForm(eventCategories));
+      setForm(buildEmptyForm(eventCategories, date));
     }
-  }, [visible, eventCategories]);
+  }, [visible, eventCategories, date]);
 
   const selectedCategory =
     eventCategories.find((c) => c.key === form.category) ?? eventCategories[0];
@@ -73,12 +115,13 @@ export default function EventDetailModal({
   const openCreate = () => {
     setIsCreating(true);
     setEditing(null);
-    setForm(buildEmptyForm(eventCategories));
+    setForm(buildEmptyForm(eventCategories, date));
   };
 
   const openEdit = (event: CalendarEvent) => {
     setEditing(event);
     setIsCreating(false);
+    const multi = isMultiDayEvent(event);
     setForm({
       title: event.title,
       time: event.time ?? '',
@@ -87,12 +130,19 @@ export default function EventDetailModal({
       category: event.category,
       subcategory: event.subcategory,
       participant: event.participant ?? 'together',
+      startDate: event.date,
+      endDate: multi ? (event.endDate ?? event.date) : event.date,
+      isMultiDay: multi,
     });
   };
 
   const handleSave = () => {
     if (!form.title.trim()) {
       Alert.alert('Missing title', 'Please enter an event title.');
+      return;
+    }
+    if (form.isMultiDay && form.endDate < form.startDate) {
+      Alert.alert('Invalid dates', 'End date must be on or after the start date.');
       return;
     }
     const durationMinutes = form.durationHours.trim()
@@ -102,7 +152,8 @@ export default function EventDetailModal({
     onSave({
       ...(editing ? { id: editing.id } : {}),
       title: form.title.trim(),
-      date,
+      date: form.startDate,
+      endDate: form.isMultiDay && form.endDate > form.startDate ? form.endDate : undefined,
       time: form.time.trim() || undefined,
       durationMinutes: durationMinutes && !isNaN(durationMinutes) ? durationMinutes : undefined,
       notes: form.notes.trim() || undefined,
@@ -112,7 +163,7 @@ export default function EventDetailModal({
     });
     setEditing(null);
     setIsCreating(false);
-    setForm(buildEmptyForm(eventCategories));
+    setForm(buildEmptyForm(eventCategories, date));
   };
 
   const handleDelete = (id: string) => {
@@ -165,6 +216,47 @@ export default function EventDetailModal({
                 placeholder="e.g. 7:00 PM"
                 placeholderTextColor={Theme.textSecondary}
               />
+
+              <View style={styles.multiDayRow}>
+                <View style={styles.multiDayText}>
+                  <Text style={styles.multiDayTitle}>Multi-day</Text>
+                  <Text style={styles.multiDayDesc}>For spanning several days</Text>
+                </View>
+                <Switch
+                  value={form.isMultiDay}
+                  onValueChange={(isMultiDay) =>
+                    setForm({
+                      ...form,
+                      isMultiDay,
+                      endDate: isMultiDay ? form.endDate : form.startDate,
+                    })
+                  }
+                  trackColor={{ false: Theme.border, true: Theme.primaryLight }}
+                  thumbColor={form.isMultiDay ? Theme.primary : Theme.surface}
+                />
+              </View>
+
+              {form.isMultiDay ? (
+                <View style={styles.dateRow}>
+                  <DateField
+                    label="Start"
+                    value={form.startDate}
+                    onChange={(startDate) =>
+                      setForm({
+                        ...form,
+                        startDate,
+                        endDate: form.endDate < startDate ? startDate : form.endDate,
+                      })
+                    }
+                  />
+                  <DateField
+                    label="End"
+                    value={form.endDate}
+                    minimumDate={parseISO(form.startDate)}
+                    onChange={(endDate) => setForm({ ...form, endDate })}
+                  />
+                </View>
+              ) : null}
 
               <Text style={styles.formLabel}>Duration in hours (optional)</Text>
               <TextInput
@@ -279,7 +371,11 @@ export default function EventDetailModal({
                     />
                     <View style={styles.eventInfo}>
                       <Text style={styles.eventTitle}>{event.title}</Text>
-                      {event.time && <Text style={styles.eventTime}>{event.time}</Text>}
+                      {isMultiDayEvent(event) ? (
+                        <Text style={styles.eventDateRange}>{formatEventDateRange(event)}</Text>
+                      ) : event.time ? (
+                        <Text style={styles.eventTime}>{event.time}</Text>
+                      ) : null}
                       {event.durationMinutes ? (
                         <Text style={styles.eventDuration}>
                           {event.durationMinutes >= 60
@@ -345,6 +441,7 @@ const styles = StyleSheet.create({
   eventDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   eventInfo: { flex: 1 },
   eventTitle: { fontSize: 16, fontWeight: '600', color: Theme.text },
+  eventDateRange: { fontSize: 13, color: Theme.primary, marginTop: 2, fontWeight: '600' },
   eventTime: { fontSize: 13, color: Theme.primary, marginTop: 2 },
   eventDuration: { fontSize: 13, color: Theme.secondary, marginTop: 2, fontWeight: '500' },
   eventCategory: { fontSize: 12, color: Theme.textSecondary, marginTop: 4 },
@@ -360,6 +457,113 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  formSubLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Theme.textSecondary,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  multiDayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Theme.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Theme.border,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginTop: 12,
+    gap: 12,
+  },
+  multiDayText: {
+    flex: 1,
+  },
+  multiDayTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Theme.text,
+    marginBottom: 2,
+  },
+  multiDayDesc: {
+    fontSize: 12,
+    color: Theme.textSecondary,
+    lineHeight: 16,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  dateField: {
+    flex: 1,
+  },
+  dateFieldLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Theme.textSecondary,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  dateTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.surface,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: Theme.border,
+    gap: 8,
+  },
+  dateTriggerText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: Theme.text,
+  },
+  dateChevron: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Theme.textSecondary,
+  },
+  dateOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  dateMenu: {
+    backgroundColor: Theme.surface,
+    borderRadius: 20,
+    padding: 12,
+    overflow: 'hidden',
+  },
+  dateMenuTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Theme.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+  },
+  dateDoneBtn: {
+    marginTop: 12,
+    marginHorizontal: 8,
+    marginBottom: 4,
+    backgroundColor: Theme.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  dateDoneText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
   input: {
     backgroundColor: Theme.surface,

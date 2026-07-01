@@ -24,6 +24,8 @@ export const DEFAULT_EVENT_CATEGORIES: EventCategoryConfig[] = [
     color: Theme.fitness,
     builtIn: true,
     subcategories: [
+      { key: 'general', label: 'General', color: Theme.fitnessSubs.general, builtIn: true },
+      { key: 'walk', label: 'Walk', color: Theme.fitnessSubs.walk, builtIn: true },
       { key: 'chest', label: 'Chest', color: Theme.fitnessSubs.chest, builtIn: true },
       { key: 'back', label: 'Back', color: Theme.fitnessSubs.back, builtIn: true },
       { key: 'legs', label: 'Legs', color: Theme.fitnessSubs.legs, builtIn: true },
@@ -85,13 +87,44 @@ export function initEventCategories(): EventCategoryConfig[] {
 }
 
 export function mergeEventCategories(stored?: EventCategoryConfig[]): EventCategoryConfig[] {
-  if (!stored?.length) {
-    return initEventCategories();
-  }
-  return stored.map((c) => ({
-    ...c,
-    subcategories: c.subcategories.map((s) => ({ ...s })),
-  }));
+  const defaults = initEventCategories();
+  if (!stored?.length) return defaults;
+
+  const storedByKey = new Map(stored.map((cat) => [cat.key, cat]));
+  const mergedBuiltIns = defaults.map((defaultCat) => {
+    const storedCat = storedByKey.get(defaultCat.key);
+    if (!storedCat) return { ...defaultCat, subcategories: defaultCat.subcategories.map((s) => ({ ...s })) };
+
+    const subMap = new Map<string, EventSubcategoryConfig>();
+    for (const sub of defaultCat.subcategories) subMap.set(sub.key, { ...sub });
+    for (const sub of storedCat.subcategories) subMap.set(sub.key, { ...sub });
+
+    const order: string[] = [
+      ...defaultCat.subcategories.map((s) => s.key),
+      ...storedCat.subcategories.map((s) => s.key).filter((key) => !defaultCat.subcategories.some((d) => d.key === key)),
+    ];
+    const seen = new Set<string>();
+    const subcategories = order
+      .filter((key) => {
+        if (seen.has(key) || !subMap.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((key) => subMap.get(key)!);
+
+    return {
+      ...defaultCat,
+      ...storedCat,
+      builtIn: true,
+      subcategories,
+    };
+  });
+
+  const customCategories = stored
+    .filter((cat) => !defaults.some((d) => d.key === cat.key))
+    .map((cat) => ({ ...cat, subcategories: cat.subcategories.map((s) => ({ ...s })) }));
+
+  return [...mergedBuiltIns, ...customCategories];
 }
 
 export function syncWeeklyGoals(

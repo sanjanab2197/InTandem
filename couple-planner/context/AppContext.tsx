@@ -65,6 +65,7 @@ const DEFAULT_DATA: AppData = {
   expenses: [],
   profile: DEFAULT_PROFILE,
   weeklyGoals: DEFAULT_WEEKLY_GOALS,
+  crossedOffDates: [],
 };
 
 const SYNCABLE_FIELDS: (keyof AppData)[] = [
@@ -132,6 +133,9 @@ interface AppContextValue {
   deleteEventSubcategory: (categoryKey: string, subKey: string) => void;
   updateProfile: (profile: CoupleProfile) => void;
   updateWeeklyGoals: (goals: CategoryGoals) => void;
+  crossedOffDates: string[];
+  toggleCrossOffDate: (date: string) => void;
+  isDateCrossedOff: (date: string) => boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -237,7 +241,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const getEventsForDate = useCallback(
-    (date: string) => data.events.filter((e) => e.date === date),
+    (date: string) =>
+      data.events.filter((e) => {
+        const end = e.endDate && e.endDate >= e.date ? e.endDate : e.date;
+        return date >= e.date && date <= end;
+      }),
     [data.events]
   );
 
@@ -748,6 +756,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [persist]
   );
 
+  const crossedOffDates = data.crossedOffDates ?? [];
+
+  const toggleCrossOffDate = useCallback(
+    (date: string) => {
+      persist((prev) => {
+        const current = prev.crossedOffDates ?? [];
+        const next = current.includes(date)
+          ? current.filter((d) => d !== date)
+          : [...current, date].sort();
+        return { ...prev, crossedOffDates: next };
+      });
+    },
+    [persist]
+  );
+
+  const isDateCrossedOff = useCallback(
+    (date: string) => crossedOffDates.includes(date),
+    [crossedOffDates]
+  );
+
   const value = useMemo(
     () => ({
       events: data.events,
@@ -795,6 +823,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deleteEventSubcategory,
       updateProfile,
       updateWeeklyGoals,
+      crossedOffDates,
+      toggleCrossOffDate,
+      isDateCrossedOff,
     }),
     [
       data,
@@ -837,6 +868,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deleteEventSubcategory,
       updateProfile,
       updateWeeklyGoals,
+      crossedOffDates,
+      toggleCrossOffDate,
+      isDateCrossedOff,
     ]
   );
 

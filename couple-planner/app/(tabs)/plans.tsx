@@ -9,6 +9,7 @@ import { useReminderRemoteActions } from '@/components/ReminderSync';
 import RemindersView from '@/components/RemindersView';
 import ScreenHeader from '@/components/ScreenHeader';
 import SubcategoryManager from '@/components/SubcategoryManager';
+import TravelPlanView from '@/components/TravelPlanView';
 import { getPlanTheme } from '@/constants/plansTheme';
 import { PLAN_CATEGORIES, Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
@@ -44,6 +45,7 @@ export default function PlansScreen() {
 
   const isReminders = category === 'reminders';
   const isExpenseflow = category === 'expenseflow';
+  const isTravel = category === 'travel_ideas';
   const isStandaloneCategory = isReminders || isExpenseflow;
   const mySlot = couple?.mySlot ?? null;
 
@@ -61,10 +63,14 @@ export default function PlansScreen() {
 
   const filteredItems = useMemo(() => {
     return allInCategory.filter((item) => {
+      const subKey =
+        item.subcategory === 'itinerary' || item.subcategory === 'ideas'
+          ? 'places'
+          : item.subcategory;
       const subOk =
         subcategoryFilter === 'all' ||
-        item.subcategory === subcategoryFilter ||
-        (!item.subcategory && subcategoryFilter === firstSubcategoryKey);
+        subKey === subcategoryFilter ||
+        (!subKey && subcategoryFilter === firstSubcategoryKey);
       const tagOk = tagFilter === 'all' || item.tags?.includes(tagFilter);
       return subOk && tagOk;
     });
@@ -97,13 +103,16 @@ export default function PlansScreen() {
         nestedScrollEnabled
         keyboardShouldPersistTaps="handled">
         <ScreenHeader
-          title="Planner"
-          hint="Switch lists to track ideas, reminders, and expenses"
+          hint={
+            isTravel
+              ? 'Pick a trip from the list, then use sections to organize places, packing, and budget'
+              : 'Switch lists to track ideas, reminders, and expenses'
+          }
         />
 
         <CategoryDropdown selected={category} onSelect={handleCategoryChange} />
 
-        {!isStandaloneCategory && (
+        {!isStandaloneCategory && !isTravel && (
           <>
             <Pressable style={styles.filtersToggle} onPress={() => setShowFilters(!showFilters)}>
               <Text style={styles.filtersToggleText}>
@@ -171,6 +180,17 @@ export default function PlansScreen() {
             deleteExpense={deleteExpense}
             settleExpense={settleExpense}
           />
+        ) : isTravel ? (
+          <TravelPlanView
+            items={allInCategory}
+            theme={planTheme}
+            sections={subcategoryOptions}
+            onToggle={togglePlanItem}
+            onAdd={(input) => addPlanItem(category, input)}
+            onEdit={updatePlanItem}
+            onDelete={deletePlanItem}
+            onEditSections={() => setManageSubcategories(true)}
+          />
         ) : (
           <ChecklistView
             items={filteredItems}
@@ -192,6 +212,13 @@ export default function PlansScreen() {
           categoryLabel={categoryInfo.label}
           theme={planTheme}
           subcategories={subcategoryOptions}
+          title={isTravel ? 'Trip sections' : 'Subcategories'}
+          subtitle={
+            isTravel
+              ? 'Customize sections inside each trip — e.g. Camping gear, Packing, Budget. Add your own or rename any.'
+              : undefined
+          }
+          addPlaceholder={isTravel ? 'New section name' : 'New subcategory name'}
           onClose={() => setManageSubcategories(false)}
           onAdd={(label) => addPlanSubcategory(category, label)}
           onUpdate={(key, label) => updatePlanSubcategory(category, key, label)}

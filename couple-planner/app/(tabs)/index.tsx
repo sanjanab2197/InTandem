@@ -4,8 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import CalendarGrid from '@/components/CalendarGrid';
 import EventCategoryManager from '@/components/EventCategoryManager';
 import EventDetailModal from '@/components/EventDetailModal';
-import ScreenHeader from '@/components/ScreenHeader';
-import { Fonts } from '@/constants/Typography';
+import { Fonts, screenHeaderStyles } from '@/constants/Typography';
 import { Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 
@@ -24,6 +23,8 @@ export default function CalendarScreen() {
     addEventSubcategory,
     updateEventSubcategory,
     deleteEventSubcategory,
+    crossedOffDates,
+    toggleCrossOffDate,
   } = useApp();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -53,29 +54,29 @@ export default function CalendarScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <ScreenHeader
-          title="Schedule"
-          hint="Tap a date to view or edit plans"
-          footer={
-            <Pressable
-              style={({ pressed }) => [styles.editCategories, pressed && styles.editCategoriesPressed]}
-              onPress={() => setManageCategories(true)}>
-              <View style={styles.editCategoriesBody}>
-                <Text style={styles.editCategoriesTitle}>Edit categories</Text>
-                <Text style={styles.editCategoriesDesc}>
-                  Customize event types, labels, and colors on your calendar
-                </Text>
-              </View>
-              <Text style={styles.editCategoriesArrow}>›</Text>
-            </Pressable>
-          }
-        />
+        <Pressable
+          style={({ pressed }) => [styles.editCategories, pressed && styles.editCategoriesPressed]}
+          onPress={() => setManageCategories(true)}>
+          <View style={styles.editCategoriesBody}>
+            <Text style={styles.editCategoriesTitle}>Edit categories</Text>
+            <Text style={styles.editCategoriesDesc}>
+              Customize event types and labels on your calendar
+            </Text>
+          </View>
+          <Text style={styles.editCategoriesArrow}>›</Text>
+        </Pressable>
 
         <CalendarGrid
           events={events}
           onDayPress={handleDayPress}
+          onDayLongPress={toggleCrossOffDate}
           selectedDate={selectedDate ?? undefined}
+          crossedOffDates={crossedOffDates}
         />
+
+        <Text style={[screenHeaderStyles.hint, screenHeaderStyles.hintOnly, styles.calendarHint]}>
+          Tap a date to view or edit plans · Long-press to cross off a day
+        </Text>
 
         <View style={styles.legend}>
           {eventCategories.map((cat) => (
@@ -117,10 +118,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.background },
   scroll: { padding: 20, paddingBottom: 40 },
+  calendarHint: { marginTop: 12 },
   editCategories: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 14,
+    marginBottom: 16,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 14,
@@ -158,7 +160,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    marginTop: 20,
+    marginTop: 12,
     paddingHorizontal: 4,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },

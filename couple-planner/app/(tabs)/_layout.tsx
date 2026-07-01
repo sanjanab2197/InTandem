@@ -24,7 +24,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Calendar',
+          title: 'Schedule',
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{ ios: 'calendar', android: 'calendar_today', web: 'calendar_today' }}
@@ -37,7 +37,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="plans"
         options={{
-          title: 'Planner',
+          title: 'Organizer',
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{ ios: 'list.bullet', android: 'list', web: 'list' }}
@@ -50,7 +50,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="stats"
         options={{
-          title: 'Stats',
+          title: 'Statistics',
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{ ios: 'chart.bar.fill', android: 'bar_chart', web: 'bar_chart' }}

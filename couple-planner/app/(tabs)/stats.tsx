@@ -73,7 +73,7 @@ export default function StatsScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title="Statistics" hint="See monthly progress toward your goals" />
+        <ScreenHeader hint="See monthly progress toward your goals" />
 
         <View style={styles.monthNav}>
           <Pressable onPress={() => setCurrentMonth(subMonths(currentMonth, 1))} style={styles.navBtn}>

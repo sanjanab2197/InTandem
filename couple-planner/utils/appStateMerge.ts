@@ -5,13 +5,6 @@ import {
   PlanSubcategoriesByCategory,
 } from '@/types';
 
-function mergeById<T extends { id: string }>(local: T[], remote: T[]): T[] {
-  const map = new Map<string, T>();
-  for (const item of local) map.set(item.id, item);
-  for (const item of remote) map.set(item.id, item);
-  return Array.from(map.values());
-}
-
 function mergeByKey<T extends { key: string }>(local: T[], remote: T[]): T[] {
   const map = new Map<string, T>();
   for (const item of local) map.set(item.key, item);
@@ -68,16 +61,29 @@ function mergeGoals(local: CategoryGoals, remote: CategoryGoals): CategoryGoals 
   return { ...local, ...remote };
 }
 
+/** Lists with deletions must come from the newer payload — union merge resurrects deleted rows. */
+function pickSyncedLists(
+  a: AppStatePayload,
+  b: AppStatePayload
+): Pick<AppStatePayload, 'events' | 'planItems' | 'expenses'> {
+  const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+  const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+  const winner = aTime >= bTime ? a : b;
+  return {
+    events: winner.events,
+    planItems: winner.planItems,
+    expenses: winner.expenses,
+  };
+}
+
 export function mergeAppStatePayload(a: AppStatePayload, b: AppStatePayload): AppStatePayload {
   const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
   const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
   const primary = aTime >= bTime ? a : b;
-  const secondary = primary === a ? b : a;
+  const lists = pickSyncedLists(a, b);
 
   return {
-    events: mergeById(secondary.events, primary.events),
-    planItems: mergeById(secondary.planItems, primary.planItems),
-    expenses: mergeById(secondary.expenses, primary.expenses),
+    ...lists,
     planSubcategories: mergeSubcategories(a.planSubcategories, b.planSubcategories),
     eventCategories: mergeEventCategories(a.eventCategories, b.eventCategories),
     weeklyGoals: mergeGoals(a.weeklyGoals, b.weeklyGoals),

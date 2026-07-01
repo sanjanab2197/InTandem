@@ -55,6 +55,7 @@ export interface CalendarEvent {
   id: string;
   title: string;
   date: string;
+  endDate?: string;
   time?: string;
   durationMinutes?: number;
   notes?: string;
@@ -142,6 +143,7 @@ export interface AppData {
   eventCategories?: EventCategoryConfig[];
   profile: CoupleProfile;
   weeklyGoals: CategoryGoals;
+  crossedOffDates?: string[];
 }
 
 /** Syncable app data stored in Supabase (excludes profile + reminders). */

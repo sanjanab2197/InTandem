@@ -5,10 +5,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Theme } from '@/constants/Theme';
 import { Fonts } from '@/constants/Typography';
 
+function getHeaderTitle(pathname: string): string {
+  if (pathname.includes('/plans')) return 'Organizer';
+  if (pathname.includes('/stats')) return 'Statistics';
+  if (pathname.includes('/profile')) return 'Profile';
+  return 'Schedule';
+}
+
 export default function AppHeaderBar() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
+  const title = getHeaderTitle(pathname);
 
   const isCalendar = pathname === '/' || pathname === '/index' || pathname.endsWith('/index');
 
@@ -19,28 +27,20 @@ export default function AppHeaderBar() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-      <View style={styles.inner}>
-        <Pressable
-          style={({ pressed }) => [styles.brandBtn, pressed && styles.brandBtnPressed]}
-          onPress={goToCalendar}
-          accessibilityRole="button"
-          accessibilityLabel="InTandem home, go to calendar">
-          <View style={styles.iconHalo}>
-            <Image
-              source={require('@/assets/images/intandem-icon.png')}
-              style={styles.icon}
-              resizeMode="cover"
-            />
-          </View>
-          <View style={styles.brandText}>
-            <Text style={styles.brand}>
-              In<Text style={styles.brandAccent}>Tandem</Text>
-            </Text>
-            <View style={styles.brandUnderline} />
-          </View>
-        </Pressable>
-      </View>
+    <View style={[styles.container, { paddingTop: insets.top + 10 }]}>
+      <Pressable
+        style={({ pressed }) => [styles.inner, pressed && !isCalendar && styles.innerPressed]}
+        onPress={goToCalendar}
+        disabled={isCalendar}
+        accessibilityRole="button"
+        accessibilityLabel={isCalendar ? title : `${title}, go to Schedule`}>
+        <Image
+          source={require('@/assets/images/intandem-icon.png')}
+          style={styles.logo}
+          resizeMode="cover"
+        />
+        <Text style={styles.title}>{title}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -48,7 +48,7 @@ export default function AppHeaderBar() {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: Theme.surface,
-    paddingBottom: 14,
+    paddingBottom: 12,
     paddingHorizontal: 20,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.border,
@@ -56,53 +56,27 @@ const styles = StyleSheet.create({
   inner: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    minHeight: 40,
+    alignSelf: 'flex-start',
+    borderRadius: 14,
+    paddingVertical: 4,
+    paddingRight: 8,
+    marginLeft: -4,
   },
-  brandBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    borderRadius: 18,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    marginLeft: -8,
-  },
-  brandBtnPressed: {
+  innerPressed: {
     backgroundColor: Theme.primaryLight,
   },
-  iconHalo: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    backgroundColor: 'rgba(139, 111, 212, 0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(139, 111, 212, 0.2)',
-  },
-  icon: {
-    width: 36,
-    height: 36,
+  logo: {
+    width: 38,
+    height: 38,
     borderRadius: 11,
   },
-  brandText: {
-    gap: 6,
-  },
-  brand: {
-    fontFamily: Fonts.bold,
+  title: {
+    fontFamily: Fonts.displayBold,
     fontSize: 26,
-    letterSpacing: -0.7,
-    color: Theme.text,
+    letterSpacing: -0.5,
+    color: Theme.primaryDark,
     lineHeight: 30,
-  },
-  brandAccent: {
-    color: Theme.primary,
-    fontFamily: Fonts.bold,
-  },
-  brandUnderline: {
-    width: 36,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: Theme.primary,
-    opacity: 0.55,
   },
 });

@@ -20,6 +20,8 @@ export const Theme = {
   personalCare: '#B894D4',
 
   fitnessSubs: {
+    general: '#9585B5',
+    walk: '#52A878',
     chest: '#E87461',
     back: '#2EC4B6',
     legs: '#4A90D9',
@@ -69,14 +71,14 @@ export const CATEGORY_LABELS = {
 } as const;
 
 export const SUBCATEGORY_LABELS: Record<string, Record<string, string>> = {
-  fitness: { chest: 'Chest', back: 'Back', legs: 'Legs', hike: 'Hike' },
+  fitness: { general: 'General', walk: 'Walk', chest: 'Chest', back: 'Back', legs: 'Legs', hike: 'Hike' },
   entertainment: { dates: 'Dates', travel: 'Travel', eating_out: 'Eating Out / Takeout' },
   productivity: { career: 'Career / Work', study: 'Study' },
   personal_care: { hair: 'Hair', face_care: 'Face Care', skincare: 'Skincare', other: 'Other' },
 };
 
 export const PLAN_CATEGORIES = [
-  { key: 'weekly_checklist', label: 'Weekly Checklist', icon: 'checkmark.circle' },
+  { key: 'weekly_checklist', label: 'Checklist', icon: 'checkmark.circle' },
   { key: 'date_ideas', label: 'Date Ideas', icon: 'heart' },
   { key: 'travel_ideas', label: 'Travel Ideas', icon: 'airplane' },
   { key: 'enrichment_ideas', label: 'Enrichment Ideas', icon: 'lightbulb' },

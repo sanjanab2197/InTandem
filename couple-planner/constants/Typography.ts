@@ -38,6 +38,9 @@ export const screenHeaderStyles = StyleSheet.create({
     lineHeight: 19,
     letterSpacing: 0.25,
   },
+  hintOnly: {
+    marginTop: 0,
+  },
 });
 
 export type ScreenHeaderStyle = ViewStyle | TextStyle;

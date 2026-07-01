@@ -1,13 +1,13 @@
 import {
   endOfMonth,
+  format,
   getDaysInMonth,
-  isWithinInterval,
-  parseISO,
   startOfMonth,
 } from 'date-fns';
 
 import { EventCategoryConfig } from '@/types';
 import { CalendarEvent } from '@/types';
+import { getEventEndDate } from '@/utils/calendarEvents';
 
 export interface SubcategoryStats {
   sessions: number;
@@ -40,9 +40,11 @@ export function computeGoalPercentage(achievedDays: number, goalDays: number): n
 export function filterEventsForMonth(events: CalendarEvent[], month: Date): CalendarEvent[] {
   const start = startOfMonth(month);
   const end = endOfMonth(month);
+  const startStr = format(start, 'yyyy-MM-dd');
+  const endStr = format(end, 'yyyy-MM-dd');
   return events.filter((e) => {
-    const d = parseISO(e.date);
-    return isWithinInterval(d, { start, end });
+    const eventEnd = e.endDate && e.endDate >= e.date ? e.endDate : e.date;
+    return eventEnd >= startStr && e.date <= endStr;
   });
 }
 
@@ -55,7 +57,13 @@ export function computeCategoryStats(
   const weeklyGoal = Math.max(0, weeklyGoalDays ?? 0);
   const monthlyGoalDays = getMonthlyGoalDays(weeklyGoal, month);
   const categoryEvents = events.filter((e) => e.category === category.key);
-  const uniqueDays = new Set(categoryEvents.map((e) => e.date)).size;
+  const uniqueDaySet = new Set<string>();
+  categoryEvents.forEach((e) => {
+    uniqueDaySet.add(e.date);
+    const end = getEventEndDate(e);
+    if (end > e.date) uniqueDaySet.add(end);
+  });
+  const uniqueDays = uniqueDaySet.size;
   const hasGoal = monthlyGoalDays > 0;
   const percentage = computeGoalPercentage(uniqueDays, monthlyGoalDays);
 

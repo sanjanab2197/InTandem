@@ -29,10 +29,9 @@ export const PLAN_SUBCATEGORIES: Record<PlanCategoryWithSubcategories, PlanSubca
     { key: 'seasonal', label: 'Seasonal / Special' },
   ],
   travel_ideas: [
-    { key: 'packing', label: 'Packing Checklist' },
     { key: 'places', label: 'Places to Visit' },
-    { key: 'itinerary', label: 'Itinerary' },
-    { key: 'budget', label: 'Budget Notes' },
+    { key: 'packing', label: 'Packing' },
+    { key: 'budget', label: 'Budget' },
   ],
   enrichment_ideas: [
     { key: 'books', label: 'Books & Reading' },
@@ -51,6 +50,28 @@ export function initPlanSubcategories(): PlanSubcategoriesByCategory {
   ) as PlanSubcategoriesByCategory;
 }
 
+function mergeSubcategoryList(
+  stored: PlanSubcategory[],
+  defaults: PlanSubcategoryOption[]
+): PlanSubcategory[] {
+  const map = new Map<string, PlanSubcategory>();
+  for (const sub of defaults) map.set(sub.key, { ...sub, builtIn: true });
+  for (const sub of stored) map.set(sub.key, { ...sub });
+
+  const order = [
+    ...defaults.map((s) => s.key),
+    ...stored.map((s) => s.key).filter((key) => !defaults.some((d) => d.key === key)),
+  ];
+  const seen = new Set<string>();
+  return order
+    .filter((key) => {
+      if (seen.has(key) || !map.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((key) => map.get(key)!);
+}
+
 export function mergePlanSubcategories(
   stored?: PlanSubcategoriesByCategory
 ): PlanSubcategoriesByCategory {
@@ -60,10 +81,11 @@ export function mergePlanSubcategories(
 
   const merged = {} as PlanSubcategoriesByCategory;
   for (const category of PLAN_CATEGORY_KEYS) {
+    const defaults = PLAN_SUBCATEGORIES[category];
     if (stored[category] !== undefined) {
-      merged[category] = stored[category].map((s) => ({ ...s }));
+      merged[category] = mergeSubcategoryList(stored[category], defaults);
     } else {
-      merged[category] = PLAN_SUBCATEGORIES[category].map((s) => ({ ...s, builtIn: true }));
+      merged[category] = defaults.map((s) => ({ ...s, builtIn: true }));
     }
   }
   return merged;

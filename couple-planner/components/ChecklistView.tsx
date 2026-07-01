@@ -22,6 +22,7 @@ interface ChecklistViewProps {
   theme: PlanCategoryTheme;
   subcategoryOptions: PlanSubcategory[];
   defaultSubcategoryKey?: string;
+  defaultTripName?: string;
   onToggle: (id: string) => void;
   onAdd: (input: AddPlanItemInput) => void;
   onEdit: (item: PlanItem) => void;
@@ -34,6 +35,7 @@ export default function ChecklistView({
   theme,
   subcategoryOptions,
   defaultSubcategoryKey,
+  defaultTripName,
   onToggle,
   onAdd,
   onEdit,
@@ -42,8 +44,20 @@ export default function ChecklistView({
   const showTripName = category === 'travel_ideas';
   const firstSubcategoryKey = subcategoryOptions[0]?.key ?? 'general';
 
-  const labelForKey = (key?: string) =>
-    subcategoryOptions.find((s) => s.key === key)?.label;
+  const travelSubKey = (key?: string) => {
+    if (!key || key === 'itinerary') return 'ideas';
+    return key;
+  };
+
+  const labelForKey = (key?: string) => {
+    const normalized = showTripName ? travelSubKey(key) : key;
+    return (
+      subcategoryOptions.find((s) => s.key === normalized)?.label ??
+      (key === 'itinerary' ? 'Ideas & Locations' : undefined)
+    );
+  };
+
+  const tripLabel = (name?: string) => name?.trim() || 'Unnamed trip';
 
   const [newText, setNewText] = useState('');
   const [newTags, setNewTags] = useState('');
@@ -71,29 +85,77 @@ export default function ChecklistView({
     }
   }, [defaultSubcategoryKey, category, firstSubcategoryKey]);
 
+  useEffect(() => {
+    if (defaultTripName) {
+      setNewTripName(defaultTripName);
+    }
+  }, [defaultTripName]);
+
+  const existingTrips = useMemo(() => {
+    if (!showTripName) return [];
+    const trips = new Set<string>();
+    items.forEach((item) => {
+      const name = item.tripName?.trim();
+      if (name) trips.add(name);
+    });
+    return Array.from(trips).sort((a, b) => a.localeCompare(b));
+  }, [items, showTripName]);
+
   const groupedItems = useMemo(() => {
     if (!showTripName) return [{ trip: null as string | null, items }];
 
-    const map = new Map<string, PlanItem[]>();
+    const trips = new Map<string, Map<string, PlanItem[]>>();
     items.forEach((item) => {
-      const trip = item.tripName?.trim() || 'General trip';
-      const list = map.get(trip) ?? [];
+      const trip = tripLabel(item.tripName);
+      const sub = travelSubKey(item.subcategory);
+      if (!trips.has(trip)) trips.set(trip, new Map());
+      const subMap = trips.get(trip)!;
+      const list = subMap.get(sub) ?? [];
       list.push(item);
-      map.set(trip, list);
+      subMap.set(sub, list);
     });
-    return Array.from(map.entries()).map(([trip, tripItems]) => ({ trip, items: tripItems }));
-  }, [items, showTripName]);
+
+    const subOrder = subcategoryOptions.map((s) => s.key);
+
+    return Array.from(trips.entries())
+      .sort(([a], [b]) => {
+        if (a === 'Unnamed trip') return 1;
+        if (b === 'Unnamed trip') return -1;
+        return a.localeCompare(b);
+      })
+      .map(([trip, subMap]) => {
+        const knownSections = subOrder
+          .map((key) => ({
+            key,
+            label: labelForKey(key) ?? key,
+            items: subMap.get(key) ?? [],
+          }))
+          .filter((section) => section.items.length > 0);
+
+        const extraSections = Array.from(subMap.entries())
+          .filter(([key]) => !subOrder.includes(key))
+          .map(([key, sectionItems]) => ({
+            key,
+            label: labelForKey(key) ?? key,
+            items: sectionItems,
+          }));
+
+        return { trip, sections: [...knownSections, ...extraSections] };
+      });
+  }, [items, showTripName, subcategoryOptions]);
 
   const handleAdd = () => {
     if (!newText.trim()) return;
+    if (showTripName && !newTripName.trim()) return;
     onAdd({
       text: newText.trim(),
       subcategory: addSubcategory,
       tags: parseTags(newTags),
-      tripName: showTripName ? newTripName.trim() || undefined : undefined,
+      tripName: showTripName ? newTripName.trim() : undefined,
     });
     setNewText('');
     setNewTags('');
+    if (!defaultTripName) setNewTripName('');
     setShowAddForm(false);
     setShowMoreOptions(false);
   };
@@ -103,7 +165,7 @@ export default function ChecklistView({
     setEditText(item.text);
     setEditTags(formatTags(item.tags));
     setEditTripName(item.tripName ?? '');
-    setEditSubcategory(item.subcategory ?? firstSubcategoryKey);
+    setEditSubcategory(showTripName ? travelSubKey(item.subcategory) : (item.subcategory ?? firstSubcategoryKey));
   };
 
   const cancelEdit = () => {
@@ -118,7 +180,7 @@ export default function ChecklistView({
     onEdit({
       ...item,
       text: editText.trim(),
-      subcategory: editSubcategory,
+      subcategory: showTripName ? travelSubKey(editSubcategory) : editSubcategory,
       tags: parseTags(editTags),
       tripName: showTripName ? editTripName.trim() || undefined : item.tripName,
     });
@@ -136,8 +198,8 @@ export default function ChecklistView({
   const accentDark = theme.accentDark;
   const accentLight = theme.accentLight;
 
-  const renderItem = (item: PlanItem) => {
-    const subLabel = labelForKey(item.subcategory);
+  const renderItem = (item: PlanItem, inTravelSection = false) => {
+    const subLabel = inTravelSection ? undefined : labelForKey(item.subcategory);
 
     if (editingId === item.id) {
       return (
@@ -210,14 +272,14 @@ export default function ChecklistView({
           </View>
           <View style={styles.itemBody}>
             <Text style={[styles.itemText, item.completed && styles.itemTextDone]}>{item.text}</Text>
-            {(subLabel || (item.tags?.length ?? 0) > 0 || item.tripName) ? (
+            {(subLabel || (item.tags?.length ?? 0) > 0 || (item.tripName && !inTravelSection)) ? (
               <View style={styles.metaRow}>
                 {subLabel ? (
                   <Text style={[styles.subBadge, { color: accentDark, backgroundColor: accentLight }]}>
                     {subLabel}
                   </Text>
                 ) : null}
-                {item.tripName && showTripName ? (
+                {item.tripName && showTripName && !inTravelSection ? (
                   <Text style={styles.tripBadge}>{item.tripName}</Text>
                 ) : null}
                 {item.tags?.map((tag) => (
@@ -304,14 +366,72 @@ export default function ChecklistView({
               style={[
                 styles.addBtn,
                 { backgroundColor: accent },
-                !newText.trim() && styles.addBtnDisabled,
+                (!newText.trim() || (showTripName && !newTripName.trim())) && styles.addBtnDisabled,
               ]}
               onPress={handleAdd}
-              disabled={!newText.trim()}>
+              disabled={!newText.trim() || (showTripName && !newTripName.trim())}>
               <Text style={styles.addBtnText}>Add</Text>
             </Pressable>
           </View>
-          {subcategoryOptions.length > 1 ? (
+          {showTripName ? (
+            <>
+              <Text style={[styles.fieldLabel, { color: accentDark }]}>Trip</Text>
+              <TextInput
+                style={[styles.metaInput, styles.tripInput]}
+                value={newTripName}
+                onChangeText={setNewTripName}
+                placeholder="Trip name (e.g. Japan 2026)"
+                placeholderTextColor={Theme.textSecondary}
+              />
+              {existingTrips.length > 0 ? (
+                <View style={styles.tripChips}>
+                  {existingTrips.map((trip) => (
+                    <Pressable
+                      key={trip}
+                      style={[
+                        styles.tripChip,
+                        newTripName.trim() === trip && {
+                          backgroundColor: accentLight,
+                          borderColor: accent,
+                        },
+                      ]}
+                      onPress={() => setNewTripName(trip)}>
+                      <Text
+                        style={[
+                          styles.tripChipText,
+                          newTripName.trim() === trip && { color: accentDark, fontWeight: '700' },
+                        ]}>
+                        {trip}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              <Text style={[styles.fieldLabel, { color: accentDark }]}>Section</Text>
+              <View style={styles.addChips}>
+                {subcategoryOptions.map((opt) => (
+                  <Pressable
+                    key={opt.key}
+                    style={[
+                      styles.miniChip,
+                      addSubcategory === opt.key && {
+                        backgroundColor: accentLight,
+                        borderColor: accent,
+                      },
+                    ]}
+                    onPress={() => setAddSubcategory(opt.key)}>
+                    <Text
+                      style={[
+                        styles.miniChipText,
+                        addSubcategory === opt.key && { color: accentDark, fontWeight: '700' },
+                      ]}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : subcategoryOptions.length > 1 ? (
             <View style={styles.addChips}>
               {subcategoryOptions.map((opt) => (
                 <Pressable
@@ -335,17 +455,19 @@ export default function ChecklistView({
               ))}
             </View>
           ) : null}
-          {showMoreOptions || (showTripName && newTripName.trim().length > 0) ? (
+          {!showTripName && (showMoreOptions || newTags.trim().length > 0) ? (
             <View style={styles.addExtras}>
-              {showTripName ? (
-                <TextInput
-                  style={styles.metaInput}
-                  value={newTripName}
-                  onChangeText={setNewTripName}
-                  placeholder="Trip name (e.g. Japan 2026)"
-                  placeholderTextColor={Theme.textSecondary}
-                />
-              ) : null}
+              <TextInput
+                style={styles.metaInput}
+                value={newTags}
+                onChangeText={setNewTags}
+                placeholder="Tags — comma separated"
+                placeholderTextColor={Theme.textSecondary}
+              />
+            </View>
+          ) : null}
+          {showTripName && (showMoreOptions || newTags.trim().length > 0) ? (
+            <View style={styles.addExtras}>
               <TextInput
                 style={styles.metaInput}
                 value={newTags}
@@ -358,21 +480,32 @@ export default function ChecklistView({
           {!showMoreOptions ? (
             <Pressable onPress={() => setShowMoreOptions(true)}>
               <Text style={[styles.moreLink, { color: accent }]}>
-                {showTripName ? 'Trip name & tags' : 'Tags & details'}
+                {showTripName ? 'Add tags' : 'Tags & details'}
               </Text>
             </Pressable>
           ) : null}
         </View>
       )}
 
-      {groupedItems.map(({ trip, items: tripItems }) => (
-        <View key={trip ?? 'default'}>
-          {showTripName && trip && groupedItems.length > 1 && (
-            <Text style={[styles.tripHeader, { color: accentDark }]}>{trip}</Text>
-          )}
-          {tripItems.map(renderItem)}
-        </View>
-      ))}
+      {showTripName
+        ? groupedItems.map(({ trip, sections }) => (
+            <View key={trip} style={styles.tripBlock}>
+              <View style={[styles.tripHeaderRow, { borderColor: accentLight }]}>
+                <Text style={[styles.tripHeader, { color: accentDark }]}>{trip}</Text>
+              </View>
+              {sections.map(({ key, label, items: sectionItems }) => (
+                <View key={`${trip}-${key}`} style={styles.subSection}>
+                  <Text style={[styles.subSectionHeader, { color: accent }]}>{label}</Text>
+                  {sectionItems.map((item) => renderItem(item, true))}
+                </View>
+              ))}
+            </View>
+          ))
+        : groupedItems.map(({ trip, items: tripItems }) => (
+            <View key={trip ?? 'default'}>
+              {tripItems.map((item) => renderItem(item, false))}
+            </View>
+          ))}
 
       <Modal
         visible={deleteTarget !== null}
@@ -425,10 +558,53 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   tripHeader: {
-    fontSize: 15,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  tripBlock: {
+    marginBottom: 16,
+  },
+  tripHeaderRow: {
+    paddingBottom: 8,
+    marginBottom: 4,
+    borderBottomWidth: 1,
+  },
+  subSection: {
+    marginTop: 10,
+  },
+  subSectionHeader: {
+    fontSize: 13,
     fontWeight: '700',
-    marginTop: 8,
     marginBottom: 8,
+    letterSpacing: 0.2,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
+    letterSpacing: 0.3,
+  },
+  tripInput: {
+    marginBottom: 8,
+  },
+  tripChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+  },
+  tripChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: Theme.background,
+    borderWidth: 1,
+    borderColor: Theme.border,
+  },
+  tripChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Theme.textSecondary,
   },
   row: {
     flexDirection: 'row',

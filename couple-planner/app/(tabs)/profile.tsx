@@ -134,11 +134,7 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <ScreenHeader
-          title="Profile"
-          hint="Manage your account and partner connection"
-          style={styles.header}
-        />
+        <ScreenHeader hint="Manage your account and partner connection" style={styles.header} />
 
         {user?.email && (
           <View style={styles.accountCard}>
