@@ -36,4 +36,9 @@ body {
   body {
     background-color: #000;
   }
+}
+[data-timeline-scroll="true"]::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }`;

@@ -130,18 +130,20 @@ export default function EventDetailModal({
             </View>
           </DrillDownScreenHeader>
 
-          <DayTimelineView
-            date={date}
-            events={dayEvents}
-            eventCategories={eventCategories}
-            filter={dayFilter}
-            onFilterChange={setDayFilter}
-            partner1Label={p1Name}
-            partner2Label={p2Name}
-            onEventPress={openEdit}
-            onSlotPress={openSlot}
-            onAllDayPress={openAllDay}
-          />
+          <View style={styles.timelineWrap}>
+            <DayTimelineView
+              date={date}
+              events={dayEvents}
+              eventCategories={eventCategories}
+              filter={dayFilter}
+              onFilterChange={setDayFilter}
+              partner1Label={p1Name}
+              partner2Label={p2Name}
+              onEventPress={openEdit}
+              onSlotPress={openSlot}
+              onAllDayPress={openAllDay}
+            />
+          </View>
 
           <Pressable style={styles.fab} onPress={openCreate}>
             <Text style={styles.fabIcon}>+</Text>
@@ -153,7 +155,8 @@ export default function EventDetailModal({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Theme.surface },
+  container: { flex: 1, minHeight: 0, backgroundColor: Theme.surface, overflow: 'hidden' },
+  timelineWrap: { flex: 1, minHeight: 0 },
   fab: {
     position: 'absolute',
     right: 20,

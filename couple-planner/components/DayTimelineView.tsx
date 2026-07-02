@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { resolveEventSurfaceColor } from '@/constants/eventCategories';
 import { Theme } from '@/constants/Theme';
@@ -12,18 +12,17 @@ import {
   getTimelineScrollOffset,
   isTodayDate,
   layoutTimedEvents,
+  minutesFromTimelineY,
   splitTimelineEvents,
   TIMELINE_HOUR_HEIGHT,
   TIMELINE_HOURS,
   TIMELINE_TOTAL_HEIGHT,
-  TIME_STEP_MINUTES,
 } from '@/utils/dayTimeline';
 import { filterEventsByDayView, getParticipantTheme, normalizeParticipant, PARTICIPANT_THEME, toggleDayViewFilter } from '@/utils/participant';
 
 const GUTTER_WIDTH = 52;
-const SLOT_COUNT = (TIMELINE_HOURS * 60) / TIME_STEP_MINUTES;
-const SLOT_HEIGHT = (TIMELINE_HOUR_HEIGHT * TIME_STEP_MINUTES) / 60;
 const PARTICIPANT_STRIPE_WIDTH = 5;
+const SLOT_LONG_PRESS_MS = 280;
 
 function participantStripeColor(event: CalendarEvent): string {
   return getParticipantTheme(normalizeParticipant(event.participant)).color;
@@ -140,9 +139,12 @@ export default function DayTimelineView({
 
       <ScrollView
         ref={scrollRef}
-        style={styles.scroll}
+        style={[styles.scroll, Platform.OS === 'web' && styles.scrollWeb]}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        bounces={false}
+        {...(Platform.OS === 'web' ? { dataSet: { timelineScroll: 'true' } } : {})}>
         <View style={styles.allDayRow}>
           <Text style={styles.gutterLabel}>All-day</Text>
           <Pressable style={styles.allDayContent} onPress={onAllDayPress}>
@@ -201,14 +203,14 @@ export default function DayTimelineView({
               />
             ))}
 
-            {Array.from({ length: SLOT_COUNT }, (_, i) => (
-              <Pressable
-                key={`slot-${i}`}
-                style={[styles.timeSlot, { top: i * SLOT_HEIGHT, height: SLOT_HEIGHT }]}
-                delayLongPress={280}
-                onLongPress={() => onSlotPress(i * TIME_STEP_MINUTES)}
-              />
-            ))}
+            <Pressable
+              style={[styles.slotOverlay, { height: TIMELINE_TOTAL_HEIGHT }]}
+              delayLongPress={SLOT_LONG_PRESS_MS}
+              onLongPress={(event) => {
+                const y = event.nativeEvent.locationY ?? 0;
+                onSlotPress(minutesFromTimelineY(y));
+              }}
+            />
 
             {isToday ? (
               <View style={[styles.nowRow, { top: nowTop - 10 }]} pointerEvents="none">
@@ -273,7 +275,7 @@ export default function DayTimelineView({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Theme.surface },
+  container: { flex: 1, minHeight: 0, backgroundColor: Theme.surface, overflow: 'hidden' },
   filterBar: {
     paddingTop: 8,
     paddingBottom: 10,
@@ -336,7 +338,12 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     letterSpacing: 0.15,
   },
-  scroll: { flex: 1 },
+  scroll: { flex: 1, minHeight: 0 },
+  scrollWeb: {
+    scrollbarWidth: 'none',
+    // @ts-expect-error legacy Edge
+    msOverflowStyle: 'none',
+  },
   scrollContent: { paddingBottom: 88 },
   allDayRow: {
     flexDirection: 'row',
@@ -421,10 +428,11 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.border,
     opacity: 0.45,
   },
-  timeSlot: {
+  slotOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
+    top: 0,
     zIndex: 0,
   },
   nowRow: {

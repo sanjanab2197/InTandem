@@ -122,7 +122,7 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Theme.background },
+  container: { flex: 1, minHeight: 0, backgroundColor: Theme.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.background },
   scroll: { padding: 20, paddingBottom: 40 },
   calendarHint: { marginTop: 12 },
