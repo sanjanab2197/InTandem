@@ -6,8 +6,9 @@ import CategoryRadialChart from '@/components/CategoryRadialChart';
 import ScreenHeader from '@/components/ScreenHeader';
 import { Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
+import { useCouple } from '@/context/CoupleContext';
 import { StatsView } from '@/types';
-import { filterEventsByStatsView, firstName } from '@/utils/participant';
+import { filterEventsByStatsView, getParticipantTheme, partnerTabLabel } from '@/utils/participant';
 import { computeCategoryStats, filterEventsForMonth } from '@/utils/stats';
 
 export default function StatsScreen() {
@@ -17,15 +18,15 @@ export default function StatsScreen() {
     eventCategories,
     weeklyGoals,
     updateWeeklyGoals,
-    profile,
   } = useApp();
+  const { couple } = useCouple();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [statsView, setStatsView] = useState<StatsView>('partner1');
   const [showGoals, setShowGoals] = useState(false);
   const [goalDraft, setGoalDraft] = useState(weeklyGoals);
 
-  const p1Name = firstName(profile.partner1Name);
-  const p2Name = firstName(profile.partner2Name);
+  const p1Name = partnerTabLabel(couple?.partner1Name ?? 'Partner 1');
+  const p2Name = partnerTabLabel(couple?.partner2Name ?? 'Partner 2');
 
   useEffect(() => {
     if (showGoals) setGoalDraft(weeklyGoals);
@@ -137,16 +138,23 @@ export default function StatsScreen() {
               { key: 'partner1' as StatsView, label: p1Name },
               { key: 'partner2' as StatsView, label: p2Name },
             ] as const
-          ).map(({ key, label }) => (
-            <Pressable
-              key={key}
-              style={[styles.viewBtn, statsView === key && styles.viewBtnActive]}
-              onPress={() => setStatsView(key)}>
-              <Text style={[styles.viewBtnText, statsView === key && styles.viewBtnTextActive]}>
-                {label}
-              </Text>
-            </Pressable>
-          ))}
+          ).map(({ key, label }) => {
+            const theme = getParticipantTheme(key);
+            const active = statsView === key;
+            return (
+              <Pressable
+                key={key}
+                style={[
+                  styles.viewBtn,
+                  active && { backgroundColor: theme.color },
+                ]}
+                onPress={() => setStatsView(key)}>
+                <Text style={[styles.viewBtnText, active && styles.viewBtnTextActive]}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
         <Text style={styles.viewHint}>
           Together activities count for both · solo activities count for that partner only
@@ -254,7 +262,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
   },
-  viewBtnActive: { backgroundColor: Theme.primary },
   viewBtnText: { fontSize: 13, fontWeight: '600', color: Theme.textSecondary },
   viewBtnTextActive: { color: '#fff' },
   viewHint: {

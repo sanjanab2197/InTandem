@@ -5,7 +5,10 @@ export interface PlanSubcategoryOption {
   label: string;
 }
 
-type PlanCategoryWithSubcategories = Exclude<PlanCategory, 'reminders' | 'expenseflow'>;
+type PlanCategoryWithSubcategories = Exclude<
+  PlanCategory,
+  'reminders' | 'expenseflow' | 'key_dates' | 'ai_agent' | 'ai_meal'
+>;
 
 export const PLAN_CATEGORY_KEYS: PlanCategoryWithSubcategories[] = [
   'weekly_checklist',
@@ -30,9 +33,11 @@ export const PLAN_SUBCATEGORIES: Record<PlanCategoryWithSubcategories, PlanSubca
     { key: 'seasonal', label: 'Seasonal / Special' },
   ],
   travel_ideas: [
-    { key: 'places', label: 'Places to Visit' },
+    { key: 'places', label: 'Itinerary' },
+    { key: 'dining', label: 'Restaurants & Food' },
+    { key: 'nightlife', label: 'Bars & Nightlife' },
     { key: 'packing', label: 'Packing' },
-    { key: 'budget', label: 'Budget' },
+    { key: 'budget', label: 'Budget & Tips' },
   ],
   enrichment_ideas: [
     { key: 'books', label: 'Books & Reading' },
@@ -107,7 +112,7 @@ export function getSubcategoriesForCategory(
   category: PlanCategory,
   all: PlanSubcategoriesByCategory
 ): PlanSubcategory[] {
-  if (category === 'reminders' || category === 'expenseflow') return [];
+  if (category === 'reminders' || category === 'expenseflow' || category === 'key_dates' || category === 'ai_agent' || category === 'ai_meal') return [];
   if (all[category] !== undefined) {
     return all[category];
   }
@@ -127,7 +132,7 @@ export function defaultSubcategory(
   category: PlanCategory,
   all: PlanSubcategoriesByCategory
 ): string {
-  if (category === 'reminders' || category === 'expenseflow') return 'general';
+  if (category === 'reminders' || category === 'expenseflow' || category === 'key_dates' || category === 'ai_agent' || category === 'ai_meal') return 'general';
   return getSubcategoriesForCategory(category, all)[0]?.key ?? 'general';
 }
 

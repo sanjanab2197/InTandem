@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import AiAgentView from '@/components/AiAgentView';
+import AiMealView from '@/components/AiMealView';
 import ChecklistListDropdown from '@/components/ChecklistListDropdown';
 import ChecklistView from '@/components/ChecklistView';
 import ExpenseflowView from '@/components/ExpenseflowView';
+import KeyDatesView from '@/components/KeyDatesView';
 import PlansHomeGrid from '@/components/PlansHomeGrid';
 import PlanSectionHeader from '@/components/PlanSectionHeader';
 import { useReminderRemoteActions } from '@/components/ReminderSync';
@@ -22,6 +25,7 @@ export default function PlansScreen() {
   const {
     loading,
     addPlanItem,
+    addPlanItemsBatch,
     updatePlanItem,
     togglePlanItem,
     deletePlanItem,
@@ -38,6 +42,10 @@ export default function PlansScreen() {
     updateExpense,
     deleteExpense,
     settleExpense,
+    addKeyDate,
+    updateKeyDate,
+    deleteKeyDate,
+    planItems,
   } = useApp();
   const [category, setCategory] = useState<PlanCategory | null>(null);
   const [subcategoryFilter, setSubcategoryFilter] = useState('');
@@ -49,9 +57,12 @@ export default function PlansScreen() {
   const isDateIdeas = category === 'date_ideas';
   const isEnrichment = category === 'enrichment_ideas';
   const isReminders = category === 'reminders';
+  const isKeyDates = category === 'key_dates';
+  const isAiAgent = category === 'ai_agent';
+  const isAiMeal = category === 'ai_meal';
   const isExpenseflow = category === 'expenseflow';
   const isTravel = category === 'travel_ideas';
-  const isStandaloneCategory = isReminders || isExpenseflow;
+  const isStandaloneCategory = isReminders || isKeyDates || isAiAgent || isAiMeal || isExpenseflow;
   const usesStoreListUi = isChecklist || isDateIdeas || isEnrichment;
   const mySlot = couple?.mySlot ?? null;
 
@@ -60,6 +71,18 @@ export default function PlansScreen() {
   const categoryInfo = category ? PLAN_CATEGORIES.find((c) => c.key === category)! : null;
   const planTheme = category ? getPlanTheme(category) : getPlanTheme('weekly_checklist');
   const firstSubcategoryKey = subcategoryOptions[0]?.key;
+
+  const groceryItems = useMemo(() => {
+    return planItems
+      .filter(
+        (item) =>
+          item.category === 'weekly_checklist' &&
+          item.subcategory === 'groceries' &&
+          !item.completed
+      )
+      .map((item) => item.text.trim())
+      .filter(Boolean);
+  }, [planItems]);
 
   const filteredItems = useMemo(() => {
     return allInCategory.filter((item) => {
@@ -110,6 +133,12 @@ export default function PlansScreen() {
     ? 'Tap a trip to organize places, packing, and budget'
     : isReminders
     ? 'Set shared reminders for you and your partner'
+    : isKeyDates
+    ? 'Save birthdays, anniversaries, and milestones you never want to forget'
+    : isAiAgent
+    ? 'Generate a couple travel itinerary with Gemini and save it to Travel Ideas'
+    : isAiMeal
+    ? 'Turn your Groceries checklist into a recipe and save it to Meals'
     : isExpenseflow
     ? 'Track shared expenses and settle up'
     : usesStoreListUi
@@ -171,6 +200,29 @@ export default function PlansScreen() {
             onSaved={syncAllToRemote}
             onDeleted={async (id) => {
               await removeRemote(id);
+            }}
+          />
+        ) : isKeyDates ? (
+          <KeyDatesView
+            theme={planTheme}
+            addKeyDate={addKeyDate}
+            updateKeyDate={updateKeyDate}
+            deleteKeyDate={deleteKeyDate}
+          />
+        ) : isAiAgent ? (
+          <AiAgentView
+            theme={planTheme}
+            onAddToTravel={(inputs) => addPlanItemsBatch('travel_ideas', inputs)}
+            onOpenTravel={() => handleCategoryChange('travel_ideas')}
+          />
+        ) : isAiMeal ? (
+          <AiMealView
+            theme={planTheme}
+            groceries={groceryItems}
+            onAddToMeals={(inputs) => addPlanItemsBatch('weekly_checklist', inputs)}
+            onOpenChecklist={() => {
+              handleCategoryChange('weekly_checklist');
+              setSubcategoryFilter('meals');
             }}
           />
         ) : isExpenseflow ? (

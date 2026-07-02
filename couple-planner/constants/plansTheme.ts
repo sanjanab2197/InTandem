@@ -38,6 +38,24 @@ export const PLAN_CATEGORY_THEMES: Record<PlanCategory, PlanCategoryTheme> = {
     accentLight: '#F5E8DC',
     accentMuted: '#FBF6F1',
   },
+  key_dates: {
+    accent: '#C96B82',
+    accentDark: '#A8556C',
+    accentLight: '#FBE8EE',
+    accentMuted: '#FFF5F8',
+  },
+  ai_agent: {
+    accent: '#7B6FD4',
+    accentDark: '#5A4DB8',
+    accentLight: '#EDE9FF',
+    accentMuted: '#F7F5FF',
+  },
+  ai_meal: {
+    accent: '#D4923A',
+    accentDark: '#B87820',
+    accentLight: '#FBF0E0',
+    accentMuted: '#FFFAF4',
+  },
   expenseflow: {
     accent: '#5A9A7A',
     accentDark: '#3D7A5E',

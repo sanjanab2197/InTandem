@@ -1,11 +1,13 @@
 import { getSupabase } from '@/lib/supabase';
 import { AppStatePayload } from '@/types';
+import { normalizeCalendarEvents } from '@/utils/calendarEventRecord';
 import { mergeAppStatePayload } from '@/utils/appStateMerge';
 
 interface AppStateRow {
   events: AppStatePayload['events'];
   plan_items: AppStatePayload['planItems'];
   expenses: AppStatePayload['expenses'];
+  key_dates: AppStatePayload['keyDates'];
   plan_subcategories: AppStatePayload['planSubcategories'];
   event_categories: AppStatePayload['eventCategories'];
   weekly_goals: AppStatePayload['weeklyGoals'];
@@ -15,9 +17,10 @@ interface AppStateRow {
 
 function rowToPayload(row: AppStateRow): AppStatePayload {
   return {
-    events: row.events ?? [],
+    events: normalizeCalendarEvents(row.events),
     planItems: row.plan_items ?? [],
     expenses: row.expenses ?? [],
+    keyDates: row.key_dates ?? [],
     planSubcategories: row.plan_subcategories ?? undefined,
     eventCategories: row.event_categories ?? undefined,
     weeklyGoals: row.weekly_goals ?? {},
@@ -28,9 +31,10 @@ function rowToPayload(row: AppStateRow): AppStatePayload {
 
 function payloadToRow(payload: AppStatePayload, updatedBy?: string) {
   return {
-    events: payload.events,
+    events: normalizeCalendarEvents(payload.events),
     plan_items: payload.planItems,
     expenses: payload.expenses,
+    key_dates: payload.keyDates ?? [],
     plan_subcategories: payload.planSubcategories ?? null,
     event_categories: payload.eventCategories ?? null,
     weekly_goals: payload.weeklyGoals,

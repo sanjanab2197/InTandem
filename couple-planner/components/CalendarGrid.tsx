@@ -140,7 +140,7 @@ export default function CalendarGrid({
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const crossedOffSet = useMemo(() => new Set(crossedOffDates), [crossedOffDates]);
 
-  const getEventColor = (event: CalendarEvent) => resolveEventColor(event, eventCategories);
+  const getDotColor = (event: CalendarEvent) => resolveEventColor(event, eventCategories);
 
   const days = useMemo(() => {
     const monthStart = startOfMonth(currentMonth);
@@ -358,7 +358,7 @@ export default function CalendarGrid({
                               {singleDayEvents.slice(0, MAX_DOTS).map((ev) => (
                                 <View
                                   key={ev.id}
-                                  style={[styles.dot, { backgroundColor: getEventColor(ev) }]}
+                                  style={[styles.dot, { backgroundColor: getDotColor(ev) }]}
                                 />
                               ))}
                             </View>

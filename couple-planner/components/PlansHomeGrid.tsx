@@ -11,6 +11,9 @@ const CARD_BLURBS: Record<PlanCategory, string> = {
   travel_ideas: 'Trips & packing',
   enrichment_ideas: 'Books & hobbies',
   reminders: 'Shared reminders',
+  key_dates: 'Birthdays & anniversaries',
+  ai_agent: 'AI travel itineraries',
+  ai_meal: 'Meals from groceries',
   expenseflow: 'Split expenses',
 };
 

@@ -9,6 +9,10 @@ export const Fonts = {
   bold: 'Inter_700Bold',
   display: 'PlusJakartaSans_800ExtraBold',
   displayBold: 'PlusJakartaSans_700Bold',
+  form: 'PlusJakartaSans_400Regular',
+  formMedium: 'PlusJakartaSans_500Medium',
+  formSemiBold: 'PlusJakartaSans_600SemiBold',
+  formBold: 'PlusJakartaSans_700Bold',
 } as const;
 
 export const screenHeaderStyles = StyleSheet.create({

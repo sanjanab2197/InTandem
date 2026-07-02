@@ -102,6 +102,62 @@ function ExpenseflowIcon({ color, size }: { color: string; size: number }) {
   );
 }
 
+function KeyDatesIcon({ color, size }: { color: string; size: number }) {
+  return (
+    <IconFrame size={size}>
+      <Rect x="4" y="6" width="16" height="14" rx="2.5" stroke={color} strokeWidth="1.75" />
+      <Path d="M4 10h16" stroke={color} strokeWidth="1.75" />
+      <Path d="M9 4v4M15 4v4" stroke={color} strokeWidth="1.75" strokeLinecap="round" />
+      <Path
+        d="M8.5 14.5 11 17l4.5-5"
+        stroke={color}
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </IconFrame>
+  );
+}
+
+function AiAgentIcon({ color, size }: { color: string; size: number }) {
+  return (
+    <IconFrame size={size}>
+      <Path
+        d="M12 3l1.4 4.3H18l-3.6 2.6 1.4 4.3L12 11.6 8.2 14.2l1.4-4.3L6 7.3h4.6L12 3Z"
+        stroke={color}
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M5 19c1.2-2 3.4-3.2 7-3.2s5.8 1.2 7 3.2"
+        stroke={color}
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </IconFrame>
+  );
+}
+
+function AiMealIcon({ color, size }: { color: string; size: number }) {
+  return (
+    <IconFrame size={size}>
+      <Path
+        d="M6 10c0-3.3 2.7-6 6-6s6 2.7 6 6"
+        stroke={color}
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <Path
+        d="M4 10h16v2c0 3.3-2.7 6-6 6h-4c-3.3 0-6-2.7-6-6v-2Z"
+        stroke={color}
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <Path d="M8 18v2M16 18v2" stroke={color} strokeWidth="1.75" strokeLinecap="round" />
+    </IconFrame>
+  );
+}
+
 const ICONS: Record<
   PlanCategory,
   React.ComponentType<{ color: string; size: number }>
@@ -111,6 +167,9 @@ const ICONS: Record<
   travel_ideas: TravelIcon,
   enrichment_ideas: EnrichmentIcon,
   reminders: RemindersIcon,
+  key_dates: KeyDatesIcon,
+  ai_agent: AiAgentIcon,
+  ai_meal: AiMealIcon,
   expenseflow: ExpenseflowIcon,
 };
 

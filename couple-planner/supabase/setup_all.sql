@@ -398,6 +398,7 @@ create table if not exists public.couple_app_state (
   event_categories jsonb,
   weekly_goals jsonb not null default '{}'::jsonb,
   crossed_off_dates jsonb not null default '[]'::jsonb,
+  key_dates jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now(),
   updated_by uuid references auth.users(id) on delete set null
 );
@@ -411,6 +412,7 @@ create table if not exists public.user_app_state (
   event_categories jsonb,
   weekly_goals jsonb not null default '{}'::jsonb,
   crossed_off_dates jsonb not null default '[]'::jsonb,
+  key_dates jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
 
@@ -458,6 +460,12 @@ alter table public.couple_app_state
 
 alter table public.user_app_state
   add column if not exists crossed_off_dates jsonb not null default '[]'::jsonb;
+
+alter table public.couple_app_state
+  add column if not exists key_dates jsonb not null default '[]'::jsonb;
+
+alter table public.user_app_state
+  add column if not exists key_dates jsonb not null default '[]'::jsonb;
 
 -- ============================================================
 -- 9. Shared reminders

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useNavigation } from 'expo-router';
+import { useLayoutEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import CalendarGrid from '@/components/CalendarGrid';
@@ -29,6 +30,12 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [manageCategories, setManageCategories] = useState(false);
+  const navigation = useNavigation();
+  const inDayView = modalVisible && !!selectedDate;
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: !inDayView });
+  }, [navigation, inDayView]);
 
   const handleDayPress = (date: string) => {
     setSelectedDate(date);
@@ -53,40 +60,51 @@ export default function CalendarScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Pressable
-          style={({ pressed }) => [styles.editCategories, pressed && styles.editCategoriesPressed]}
-          onPress={() => setManageCategories(true)}>
-          <View style={styles.editCategoriesBody}>
-            <Text style={styles.editCategoriesTitle}>Edit categories</Text>
-            <Text style={styles.editCategoriesDesc}>
-              Customize event types and labels on your calendar
-            </Text>
-          </View>
-          <Text style={styles.editCategoriesArrow}>›</Text>
-        </Pressable>
-
-        <CalendarGrid
-          events={events}
-          onDayPress={handleDayPress}
-          onDayLongPress={toggleCrossOffDate}
-          selectedDate={selectedDate ?? undefined}
-          crossedOffDates={crossedOffDates}
+      {modalVisible && selectedDate ? (
+        <EventDetailModal
+          visible
+          date={selectedDate}
+          onClose={() => setModalVisible(false)}
+          onDateChange={setSelectedDate}
+          onSave={handleSave}
+          onDelete={deleteEvent}
         />
-
-        <Text style={[screenHeaderStyles.hint, screenHeaderStyles.hintOnly, styles.calendarHint]}>
-          Tap a date to view or edit plans · Long-press to cross off a day
-        </Text>
-
-        <View style={styles.legend}>
-          {eventCategories.map((cat) => (
-            <View key={cat.key} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: cat.color }]} />
-              <Text style={styles.legendLabel}>{cat.label}</Text>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          <Pressable
+            style={({ pressed }) => [styles.editCategories, pressed && styles.editCategoriesPressed]}
+            onPress={() => setManageCategories(true)}>
+            <View style={styles.editCategoriesBody}>
+              <Text style={styles.editCategoriesTitle}>Edit categories</Text>
+              <Text style={styles.editCategoriesDesc}>
+                Customize event types and labels on your calendar
+              </Text>
             </View>
-          ))}
-        </View>
-      </ScrollView>
+            <Text style={styles.editCategoriesArrow}>›</Text>
+          </Pressable>
+
+          <CalendarGrid
+            events={events}
+            onDayPress={handleDayPress}
+            onDayLongPress={toggleCrossOffDate}
+            selectedDate={selectedDate ?? undefined}
+            crossedOffDates={crossedOffDates}
+          />
+
+          <Text style={[screenHeaderStyles.hint, screenHeaderStyles.hintOnly, styles.calendarHint]}>
+            Tap a date for day view · Long-press a time to add an event · Long-press a day to cross off
+          </Text>
+
+          <View style={styles.legend}>
+            {eventCategories.map((cat) => (
+              <View key={cat.key} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: cat.color }]} />
+                <Text style={styles.legendLabel}>{cat.label}</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      )}
 
       <EventCategoryManager
         visible={manageCategories}
@@ -99,17 +117,6 @@ export default function CalendarScreen() {
         onUpdateSubcategory={updateEventSubcategory}
         onDeleteSubcategory={deleteEventSubcategory}
       />
-
-      {selectedDate && (
-        <EventDetailModal
-          visible={modalVisible}
-          date={selectedDate}
-          events={getEventsForDate(selectedDate)}
-          onClose={() => setModalVisible(false)}
-          onSave={handleSave}
-          onDelete={deleteEvent}
-        />
-      )}
     </View>
   );
 }

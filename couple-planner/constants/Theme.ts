@@ -54,6 +54,31 @@ export const Theme = {
     '#A855F7',
   ],
 
+  /** Uncategorized events — soft lavender for calendar dots. */
+  eventNone: '#A894E0',
+
+  /** Who-colors — chosen to avoid category / subcategory palette collisions. */
+  participants: {
+    together: {
+      color: '#E85D8A',
+      colorLight: '#FBEEF2',
+      colorDark: '#C94A72',
+    },
+    partner1: {
+      color: '#5B7EBD',
+      colorLight: '#EEF3FA',
+      colorDark: '#3D5F8A',
+    },
+    partner2: {
+      color: '#388659',
+      colorLight: '#EDF5EF',
+      colorDark: '#276647',
+    },
+  },
+
+  /** Light fill for timeline event blocks (no category). */
+  eventNoneSurface: '#EFECF4',
+
   love: {
     rose: '#E85D8A',
     roseDark: '#C94A72',
@@ -83,5 +108,8 @@ export const PLAN_CATEGORIES = [
   { key: 'travel_ideas', label: 'Travel Ideas', icon: 'airplane' },
   { key: 'enrichment_ideas', label: 'Enrichment Ideas', icon: 'lightbulb' },
   { key: 'reminders', label: 'Reminders', icon: 'bell' },
+  { key: 'key_dates', label: 'Key Dates', icon: 'gift' },
+  { key: 'ai_agent', label: 'AI Agent', icon: 'sparkles' },
+  { key: 'ai_meal', label: 'AI Meal', icon: 'fork.knife' },
   { key: 'expenseflow', label: 'Expenseflow', icon: 'dollarsign.circle' },
 ] as const;

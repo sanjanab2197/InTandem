@@ -4,6 +4,7 @@ import {
   EventCategoryConfig,
   PlanSubcategoriesByCategory,
 } from '@/types';
+import { normalizeCalendarEvents } from '@/utils/calendarEventRecord';
 
 function mergeByKey<T extends { key: string }>(local: T[], remote: T[]): T[] {
   const map = new Map<string, T>();
@@ -65,14 +66,15 @@ function mergeGoals(local: CategoryGoals, remote: CategoryGoals): CategoryGoals 
 function pickSyncedLists(
   a: AppStatePayload,
   b: AppStatePayload
-): Pick<AppStatePayload, 'events' | 'planItems' | 'expenses' | 'crossedOffDates'> {
+): Pick<AppStatePayload, 'events' | 'planItems' | 'expenses' | 'keyDates' | 'crossedOffDates'> {
   const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
   const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
   const winner = aTime >= bTime ? a : b;
   return {
-    events: winner.events,
+    events: normalizeCalendarEvents(winner.events),
     planItems: winner.planItems,
     expenses: winner.expenses,
+    keyDates: winner.keyDates ?? [],
     crossedOffDates: winner.crossedOffDates ?? [],
   };
 }
@@ -97,6 +99,7 @@ export function isEmptyAppState(payload: AppStatePayload): boolean {
     payload.events.length === 0 &&
     payload.planItems.length === 0 &&
     payload.expenses.length === 0 &&
+    (payload.keyDates?.length ?? 0) === 0 &&
     Object.keys(payload.weeklyGoals).length === 0 &&
     !payload.planSubcategories &&
     !payload.eventCategories
@@ -128,6 +131,7 @@ export function resolveAppStateOnPull(
         events: [],
         planItems: [],
         expenses: [],
+        keyDates: [],
         planSubcategories: undefined,
         eventCategories: undefined,
         weeklyGoals: {},

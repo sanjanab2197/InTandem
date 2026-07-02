@@ -21,7 +21,10 @@ export type PlanCategory =
   | 'travel_ideas'
   | 'enrichment_ideas'
   | 'reminders'
-  | 'expenseflow';
+  | 'expenseflow'
+  | 'key_dates'
+  | 'ai_agent'
+  | 'ai_meal';
 
 export type ExpensePaidBy = 'partner1' | 'partner2';
 
@@ -49,7 +52,36 @@ export interface AddExpenseInput {
 
 export type Participant = 'together' | 'partner1' | 'partner2';
 
+export type KeyDateKind = 'birthday' | 'anniversary' | 'first_date' | 'engagement' | 'other';
+
+export interface KeyDate {
+  id: string;
+  title: string;
+  date: string;
+  kind: KeyDateKind;
+  forWhom: Participant;
+  notes?: string;
+  giftIdeas?: string;
+  createdAt: string;
+}
+
+export interface AddKeyDateInput {
+  title: string;
+  date: string;
+  kind: KeyDateKind;
+  forWhom: Participant;
+  notes?: string;
+  giftIdeas?: string;
+}
+
 export type StatsView = 'partner1' | 'partner2';
+
+export type DayViewFilterKey = 'partner1' | 'partner2' | 'together';
+
+export type DayViewFilters = Record<DayViewFilterKey, boolean>;
+
+/** @deprecated use DayViewFilters */
+export type DayViewFilter = DayViewFilterKey;
 
 export interface CalendarEvent {
   id: string;
@@ -139,6 +171,7 @@ export interface AppData {
   planItems: PlanItem[];
   reminders: Reminder[];
   expenses: Expense[];
+  keyDates: KeyDate[];
   planSubcategories?: PlanSubcategoriesByCategory;
   eventCategories?: EventCategoryConfig[];
   profile: CoupleProfile;
@@ -151,6 +184,7 @@ export interface AppStatePayload {
   events: CalendarEvent[];
   planItems: PlanItem[];
   expenses: Expense[];
+  keyDates: KeyDate[];
   planSubcategories?: PlanSubcategoriesByCategory;
   eventCategories?: EventCategoryConfig[];
   weeklyGoals: CategoryGoals;

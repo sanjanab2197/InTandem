@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -12,8 +12,8 @@ import {
 import { Theme } from '@/constants/Theme';
 
 const ITEM_HEIGHT = 36;
+const COMPACT_ITEM_HEIGHT = 32;
 const VISIBLE_ROWS = 3;
-const PADDING = ITEM_HEIGHT;
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
@@ -46,6 +46,7 @@ interface ScrollColumnProps<T extends string | number> {
   selected: T;
   onSelect: (item: T) => void;
   format: (item: T) => string;
+  itemHeight: number;
   width?: number;
 }
 
@@ -54,52 +55,97 @@ function ScrollColumn<T extends string | number>({
   selected,
   onSelect,
   format,
+  itemHeight,
   width = 52,
 }: ScrollColumnProps<T>) {
   const scrollRef = useRef<ScrollView>(null);
+  const interactingRef = useRef(false);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastOffsetRef = useRef(0);
   const selectedIndex = Math.max(0, items.indexOf(selected));
-  const scrollingRef = useRef(false);
+  const padding = itemHeight;
+  const columnHeight = itemHeight * VISIBLE_ROWS;
+  const [centerIndex, setCenterIndex] = useState(selectedIndex);
 
   useEffect(() => {
-    if (scrollingRef.current) return;
-    scrollRef.current?.scrollTo({ y: selectedIndex * ITEM_HEIGHT, animated: false });
+    setCenterIndex(selectedIndex);
   }, [selectedIndex]);
 
-  const snapToIndex = (index: number) => {
-    const clamped = Math.max(0, Math.min(items.length - 1, index));
-    scrollingRef.current = true;
-    onSelect(items[clamped]);
-    scrollRef.current?.scrollTo({ y: clamped * ITEM_HEIGHT, animated: true });
-    setTimeout(() => {
-      scrollingRef.current = false;
-    }, 200);
+  useEffect(() => {
+    if (interactingRef.current) return;
+    scrollRef.current?.scrollTo({ y: selectedIndex * itemHeight, animated: false });
+  }, [selectedIndex, itemHeight]);
+
+  const indexFromOffset = (offsetY: number) => {
+    const index = Math.round(offsetY / itemHeight);
+    return Math.max(0, Math.min(items.length - 1, index));
   };
 
-  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const index = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
-    snapToIndex(index);
+  const applyCenterIndex = (
+    index: number,
+    { scroll = true, animated = false }: { scroll?: boolean; animated?: boolean } = {}
+  ) => {
+    const clamped = Math.max(0, Math.min(items.length - 1, index));
+    setCenterIndex(clamped);
+    onSelect(items[clamped]);
+    if (scroll) {
+      scrollRef.current?.scrollTo({ y: clamped * itemHeight, animated });
+    }
+  };
+
+  const syncFromOffset = (
+    offsetY: number,
+    options?: { scroll?: boolean; animated?: boolean }
+  ) => {
+    applyCenterIndex(indexFromOffset(offsetY), options);
+  };
+
+  const finishInteraction = (offsetY: number) => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+    interactingRef.current = false;
+    syncFromOffset(offsetY, { animated: true });
+  };
+
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    interactingRef.current = true;
+    const offsetY = e.nativeEvent.contentOffset.y;
+    lastOffsetRef.current = offsetY;
+    syncFromOffset(offsetY, { scroll: false });
+
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => {
+      finishInteraction(lastOffsetRef.current);
+    }, 120);
   };
 
   return (
-    <View style={[styles.columnWrap, { width }]}>
+    <View style={[styles.columnWrap, { width, height: columnHeight }]}>
       <ScrollView
         ref={scrollRef}
         nestedScrollEnabled
         showsVerticalScrollIndicator={false}
-        snapToInterval={ITEM_HEIGHT}
+        snapToInterval={itemHeight}
         decelerationRate="fast"
         directionalLockEnabled
         bounces={false}
-        contentContainerStyle={{ paddingVertical: PADDING }}
-        onMomentumScrollEnd={onScrollEnd}
-        onScrollEndDrag={onScrollEnd}>
+        contentContainerStyle={{ paddingVertical: padding }}
+        onScrollBeginDrag={() => {
+          interactingRef.current = true;
+        }}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        onMomentumScrollEnd={(e) => finishInteraction(e.nativeEvent.contentOffset.y)}
+        onScrollEndDrag={(e) => finishInteraction(e.nativeEvent.contentOffset.y)}>
         {items.map((item, index) => {
-          const active = item === selected;
+          const active = index === centerIndex;
           return (
             <Pressable
               key={String(item)}
-              style={styles.item}
-              onPress={() => snapToIndex(index)}>
+              style={[styles.item, { height: itemHeight }]}
+              onPress={() => applyCenterIndex(index, { animated: true })}>
               <Text style={[styles.itemText, active && styles.itemTextActive]}>{format(item)}</Text>
             </Pressable>
           );
@@ -112,45 +158,68 @@ function ScrollColumn<T extends string | number>({
 interface TimeScrollPickerProps {
   value: Date;
   onChange: (date: Date) => void;
+  compact?: boolean;
 }
 
-export default function TimeScrollPicker({ value, onChange }: TimeScrollPickerProps) {
+export default function TimeScrollPicker({
+  value,
+  onChange,
+  compact = false,
+}: TimeScrollPickerProps) {
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
   const parts = dateTo12Parts(value);
+  const itemHeight = compact ? COMPACT_ITEM_HEIGHT : ITEM_HEIGHT;
+  const pickerHeight = itemHeight * VISIBLE_ROWS;
+  const padding = itemHeight;
 
   const update = (next: Partial<Time12Parts>) => {
+    const current = dateTo12Parts(valueRef.current);
     onChange(
-      apply12PartsToDate(value, {
-        hour: next.hour ?? parts.hour,
-        minute: next.minute ?? parts.minute,
-        period: next.period ?? parts.period,
+      apply12PartsToDate(valueRef.current, {
+        hour: next.hour ?? current.hour,
+        minute: next.minute ?? current.minute,
+        period: next.period ?? current.period,
       })
     );
   };
 
   return (
-    <View style={styles.wrap}>
-      <View style={styles.highlight} pointerEvents="none" />
+    <View style={[styles.wrap, { height: pickerHeight }]}>
+      <View
+        style={[
+          styles.highlight,
+          { top: padding, height: itemHeight, left: compact ? 0 : 8, right: compact ? 0 : 8 },
+        ]}
+        pointerEvents="none"
+      />
+
       <View style={styles.columns}>
         <ScrollColumn
           items={HOURS}
           selected={parts.hour}
           onSelect={(hour) => update({ hour })}
           format={(h) => String(h)}
+          itemHeight={itemHeight}
+          width={compact ? 40 : 52}
         />
-        <Text style={styles.separator}>:</Text>
+        <Text style={[styles.separator, compact && styles.separatorCompact]}>:</Text>
         <ScrollColumn
           items={MINUTES}
           selected={parts.minute}
           onSelect={(minute) => update({ minute })}
           format={(m) => String(m).padStart(2, '0')}
-          width={56}
+          itemHeight={itemHeight}
+          width={compact ? 44 : 56}
         />
         <ScrollColumn
           items={PERIODS}
           selected={parts.period}
           onSelect={(period) => update({ period })}
           format={(p) => p}
-          width={56}
+          itemHeight={itemHeight}
+          width={compact ? 44 : 56}
         />
       </View>
     </View>
@@ -159,16 +228,10 @@ export default function TimeScrollPicker({ value, onChange }: TimeScrollPickerPr
 
 const styles = StyleSheet.create({
   wrap: {
-    height: ITEM_HEIGHT * VISIBLE_ROWS,
     position: 'relative',
-    marginVertical: 8,
   },
   highlight: {
     position: 'absolute',
-    left: 12,
-    right: 12,
-    top: PADDING,
-    height: ITEM_HEIGHT,
     backgroundColor: Theme.primaryLight,
     borderRadius: 8,
     zIndex: 0,
@@ -180,11 +243,9 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   columnWrap: {
-    height: ITEM_HEIGHT * VISIBLE_ROWS,
     overflow: 'hidden',
   },
   item: {
-    height: ITEM_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -204,5 +265,9 @@ const styles = StyleSheet.create({
     color: Theme.text,
     marginHorizontal: 2,
     marginBottom: 2,
+  },
+  separatorCompact: {
+    fontSize: 18,
+    marginHorizontal: 0,
   },
 });

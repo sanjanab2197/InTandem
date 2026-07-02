@@ -1,5 +1,6 @@
 import { Theme } from '@/constants/Theme';
 import { CalendarEvent, CategoryGoals, EventCategoryConfig, EventSubcategoryConfig } from '@/types';
+import { mixHex } from '@/utils/colorMix';
 
 const SUB_COLOR_PALETTE = [
   '#E87461',
@@ -168,11 +169,21 @@ export function eventHasCategory(event: CalendarEvent): boolean {
 }
 
 export function resolveEventColor(event: CalendarEvent, categories: EventCategoryConfig[]): string {
-  if (!event.category) return Theme.textSecondary;
+  if (!event.category) return Theme.eventNone;
   const cat = findEventCategory(categories, event.category);
   if (!cat) return Theme.primary;
   const sub = cat.subcategories.find((s) => s.key === event.subcategory);
   return sub?.color ?? cat.color;
+}
+
+/** Light block fill for day timeline — category tint, not full saturation. */
+export function resolveEventSurfaceColor(
+  event: CalendarEvent,
+  categories: EventCategoryConfig[]
+): string {
+  if (!event.category) return Theme.eventNoneSurface;
+  const accent = resolveEventColor(event, categories);
+  return mixHex(accent, '#FFFFFF', 0.86);
 }
 
 export function slugifyCategoryKey(label: string): string {

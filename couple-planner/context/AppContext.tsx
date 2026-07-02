@@ -19,7 +19,13 @@ import {
 } from '@/constants/plans';
 import { useAuth } from '@/context/AuthContext';
 import {
+  normalizeCalendarEventForSave,
+  normalizeCalendarEventForUpdate,
+  normalizeCalendarEvents,
+} from '@/utils/calendarEventRecord';
+import {
   AddExpenseInput,
+  AddKeyDateInput,
   AddPlanItemInput,
   AddReminderInput,
   AppData,
@@ -29,6 +35,7 @@ import {
   CoupleProfile,
   EventCategoryConfig,
   Expense,
+  KeyDate,
   PlanCategory,
   PlanItem,
   PlanSubcategoriesByCategory,
@@ -77,6 +84,7 @@ const DEFAULT_DATA: AppData = {
   planItems: [],
   reminders: [],
   expenses: [],
+  keyDates: [],
   profile: DEFAULT_PROFILE,
   weeklyGoals: DEFAULT_WEEKLY_GOALS,
   crossedOffDates: [],
@@ -86,6 +94,7 @@ const SYNCABLE_FIELDS: (keyof AppData)[] = [
   'events',
   'planItems',
   'expenses',
+  'keyDates',
   'planSubcategories',
   'eventCategories',
   'weeklyGoals',
@@ -107,6 +116,7 @@ interface AppContextValue {
   planItems: PlanItem[];
   reminders: Reminder[];
   expenses: Expense[];
+  keyDates: KeyDate[];
   planSubcategories: PlanSubcategoriesByCategory;
   eventCategories: EventCategoryConfig[];
   profile: CoupleProfile;
@@ -117,6 +127,7 @@ interface AppContextValue {
   deleteEvent: (id: string) => void;
   getEventsForDate: (date: string) => CalendarEvent[];
   addPlanItem: (category: PlanCategory, input: AddPlanItemInput) => void;
+  addPlanItemsBatch: (category: PlanCategory, inputs: AddPlanItemInput[]) => void;
   updatePlanItem: (item: PlanItem) => void;
   deletePlanItem: (id: string) => void;
   clearCompletedPlanItems: (category: PlanCategory, subcategory?: string, tripName?: string) => void;
@@ -145,6 +156,9 @@ interface AppContextValue {
   updateExpense: (expense: Expense) => void;
   deleteExpense: (id: string) => void;
   settleExpense: (id: string, settled: boolean) => void;
+  addKeyDate: (input: AddKeyDateInput) => void;
+  updateKeyDate: (item: KeyDate) => void;
+  deleteKeyDate: (id: string) => void;
   addEventCategory: (label: string) => void;
   updateEventCategory: (key: string, label: string) => void;
   deleteEventCategory: (key: string) => void;
@@ -229,6 +243,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setData({
             ...DEFAULT_DATA,
             ...parsed,
+            events: normalizeCalendarEvents(parsed.events),
             eventCategories,
             weeklyGoals: syncWeeklyGoals(eventCategories, {
               ...DEFAULT_WEEKLY_GOALS,
@@ -237,6 +252,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             planSubcategories: mergePlanSubcategories(parsed.planSubcategories),
             reminders: parsed.reminders ?? [],
             expenses: pruneOldSettledExpenses(parsed.expenses ?? []),
+            keyDates: parsed.keyDates ?? [],
             crossedOffDates: parsed.crossedOffDates ?? [],
           });
           return;
@@ -251,6 +267,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const migrated = {
             ...DEFAULT_DATA,
             ...parsed,
+            events: normalizeCalendarEvents(parsed.events),
             eventCategories,
             weeklyGoals: syncWeeklyGoals(eventCategories, {
               ...DEFAULT_WEEKLY_GOALS,
@@ -259,6 +276,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             planSubcategories: mergePlanSubcategories(parsed.planSubcategories),
             reminders: parsed.reminders ?? [],
             expenses: pruneOldSettledExpenses(parsed.expenses ?? []),
+            keyDates: parsed.keyDates ?? [],
             crossedOffDates: parsed.crossedOffDates ?? [],
           };
           setData(migrated);
@@ -326,9 +344,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addEvent = useCallback(
     (event: Omit<CalendarEvent, 'id'>) => {
+      const normalized = normalizeCalendarEventForSave(event);
       persist((prev) => ({
         ...prev,
-        events: [...prev.events, { ...event, id: generateId() }],
+        events: [...prev.events, { ...normalized, id: generateId() }],
       }));
     },
     [persist]
@@ -336,9 +355,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateEvent = useCallback(
     (event: CalendarEvent) => {
+      const normalized = normalizeCalendarEventForUpdate(event);
       persist((prev) => ({
         ...prev,
-        events: prev.events.map((e) => (e.id === event.id ? event : e)),
+        events: prev.events.map((e) => (e.id === normalized.id ? normalized : e)),
       }));
     },
     [persist]
@@ -375,6 +395,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             tags: input.tags?.length ? input.tags : undefined,
             tripName: input.tripName?.trim() || undefined,
           },
+        ],
+      }));
+    },
+    [persist]
+  );
+
+  const addPlanItemsBatch = useCallback(
+    (category: PlanCategory, inputs: AddPlanItemInput[]) => {
+      if (inputs.length === 0) return;
+      persist((prev) => ({
+        ...prev,
+        planItems: [
+          ...prev.planItems,
+          ...inputs.map((input) => ({
+            id: generateId(),
+            text: input.text,
+            completed: false,
+            category,
+            subcategory: input.subcategory,
+            tags: input.tags?.length ? input.tags : undefined,
+            tripName: input.tripName?.trim() || undefined,
+          })),
         ],
       }));
     },
@@ -540,9 +582,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const eventCategories = mergeEventCategories(payload.eventCategories ?? prev.eventCategories);
         const next = {
           ...prev,
-          events: payload.events,
+          events: normalizeCalendarEvents(payload.events),
           planItems: payload.planItems,
           expenses: pruneOldSettledExpenses(payload.expenses),
+          keyDates: payload.keyDates ?? [],
           planSubcategories: mergePlanSubcategories(payload.planSubcategories ?? prev.planSubcategories),
           eventCategories,
           weeklyGoals: syncWeeklyGoals(eventCategories, {
@@ -563,9 +606,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const getAppStatePayload = useCallback((): AppStatePayload => {
     const eventCategories = mergeEventCategories(data.eventCategories);
     return {
-      events: data.events,
+      events: normalizeCalendarEvents(data.events),
       planItems: data.planItems,
       expenses: data.expenses,
+      keyDates: data.keyDates,
       planSubcategories: mergePlanSubcategories(data.planSubcategories),
       eventCategories,
       weeklyGoals: syncWeeklyGoals(eventCategories, data.weeklyGoals),
@@ -734,6 +778,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         );
         return { ...prev, expenses: pruneOldSettledExpenses(next) };
       });
+    },
+    [persist]
+  );
+
+  const addKeyDate = useCallback(
+    (input: AddKeyDateInput) => {
+      const created: KeyDate = {
+        id: generateId(),
+        title: input.title,
+        date: input.date,
+        kind: input.kind,
+        forWhom: input.forWhom,
+        notes: input.notes,
+        giftIdeas: input.giftIdeas,
+        createdAt: new Date().toISOString(),
+      };
+      persist((prev) => ({
+        ...prev,
+        keyDates: [...prev.keyDates, created],
+      }));
+    },
+    [persist]
+  );
+
+  const updateKeyDate = useCallback(
+    (item: KeyDate) => {
+      persist((prev) => ({
+        ...prev,
+        keyDates: prev.keyDates.map((d) => (d.id === item.id ? item : d)),
+      }));
+    },
+    [persist]
+  );
+
+  const deleteKeyDate = useCallback(
+    (id: string) => {
+      persist((prev) => ({
+        ...prev,
+        keyDates: prev.keyDates.filter((d) => d.id !== id),
+      }));
     },
     [persist]
   );
@@ -944,6 +1028,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       planItems: data.planItems,
       reminders: data.reminders,
       expenses: data.expenses,
+      keyDates: data.keyDates,
       planSubcategories,
       eventCategories,
       profile: data.profile,
@@ -954,6 +1039,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deleteEvent,
       getEventsForDate,
       addPlanItem,
+      addPlanItemsBatch,
       updatePlanItem,
       deletePlanItem,
       clearCompletedPlanItems,
@@ -982,6 +1068,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateExpense,
       deleteExpense,
       settleExpense,
+      addKeyDate,
+      updateKeyDate,
+      deleteKeyDate,
       addEventCategory,
       updateEventCategory,
       deleteEventCategory,
@@ -1004,6 +1093,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deleteEvent,
       getEventsForDate,
       addPlanItem,
+      addPlanItemsBatch,
       updatePlanItem,
       deletePlanItem,
       clearCompletedPlanItems,
@@ -1032,6 +1122,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateExpense,
       deleteExpense,
       settleExpense,
+      addKeyDate,
+      updateKeyDate,
+      deleteKeyDate,
       addEventCategory,
       updateEventCategory,
       deleteEventCategory,
