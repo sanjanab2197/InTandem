@@ -11,7 +11,7 @@ module.exports = () => ({
         'expo-notifications',
         {
           icon: './assets/images/icon.png',
-          color: '#8B6FD4',
+          color: '#8770C6',
         },
       ],
       '@react-native-community/datetimepicker',

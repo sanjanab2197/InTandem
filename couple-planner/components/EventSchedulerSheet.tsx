@@ -39,10 +39,10 @@ import {
 const FORM_ICON_SIZE = 28;
 
 const FORM_FIELD_ACCENTS = {
-  schedule: { icon: '#3B6FD4', ring: '#5B8DEF' },
-  category: { icon: '#5A42A8', soft: '#8B6FD4' },
-  subcategory: { icon: '#B87820', nested: '#E09830' },
-  description: { icon: '#3A8560' },
+  schedule: { icon: '#3A62AD', ring: '#5282CC' },
+  category: { icon: '#564A98', soft: '#8770C6' },
+  subcategory: { icon: '#A06E28', nested: '#C0883A' },
+  description: { icon: '#3A7058' },
 } as const;
 
 interface EventSchedulerSheetProps {
