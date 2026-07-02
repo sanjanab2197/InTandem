@@ -3,19 +3,19 @@ import { CalendarEvent, CategoryGoals, EventCategoryConfig, EventSubcategoryConf
 import { mixHex } from '@/utils/colorMix';
 
 const SUB_COLOR_PALETTE = [
-  '#E87461',
-  '#2EC4B6',
-  '#4A90D9',
-  '#3D9970',
-  '#FF6B9D',
-  '#45B7D1',
-  '#F4A442',
-  '#6366F1',
-  '#F59E0B',
-  '#A855F7',
-  '#EC4899',
-  '#14B8A6',
-  '#F97316',
+  '#D97262',
+  '#3AAB9E',
+  '#4A82B8',
+  '#3F8566',
+  '#D47892',
+  '#4A9BB0',
+  '#C99548',
+  '#5D61C4',
+  '#C4903A',
+  '#9171B8',
+  '#C86E88',
+  '#449E90',
+  '#C97A42',
 ];
 
 export const DEFAULT_EVENT_CATEGORIES: EventCategoryConfig[] = [
