@@ -29,6 +29,7 @@ interface AiMealViewProps {
   groceries: string[];
   onAddToMeals: (inputs: AddPlanItemInput[]) => void;
   onOpenChecklist?: () => void;
+  onSaved?: () => Promise<void>;
 }
 
 export default function AiMealView({
@@ -36,6 +37,7 @@ export default function AiMealView({
   groceries,
   onAddToMeals,
   onOpenChecklist,
+  onSaved,
 }: AiMealViewProps) {
   const { accent, accentDark, accentLight, accentMuted } = theme;
 
@@ -96,10 +98,18 @@ export default function AiMealView({
     }
   };
 
-  const handleSaveToMeals = () => {
+  const handleSaveToMeals = async () => {
     if (!result) return;
     onAddToMeals(mealResultToPlanInputs(result));
     setSaved(true);
+    try {
+      await onSaved?.();
+    } catch {
+      Alert.alert(
+        'Saved on this device',
+        'Could not sync to the cloud right now. Will retry automatically.'
+      );
+    }
     Alert.alert(
       'Saved to Meals',
       `Added “${result.mealName}” to your Meals checklist.`,

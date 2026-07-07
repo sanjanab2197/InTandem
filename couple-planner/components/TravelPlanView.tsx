@@ -33,6 +33,16 @@ function normalizeSection(key?: string): string {
   return key;
 }
 
+/** Match items to a trip section, including legacy/missing subcategory keys. */
+function itemMatchesSection(item: PlanItem, tripName: string, sectionKey: string): boolean {
+  if (item.tripName?.trim() !== tripName) return false;
+  return normalizeSection(item.subcategory) === sectionKey;
+}
+
+function tripItemCount(items: PlanItem[], tripName: string): number {
+  return items.filter((item) => item.tripName?.trim() === tripName).length;
+}
+
 type TripSummary = { name: string };
 
 export default function TravelPlanView({
@@ -71,6 +81,22 @@ export default function TravelPlanView({
       .sort((a, b) => a.localeCompare(b))
       .map((name) => ({ name }));
   }, [items, draftTrips]);
+
+  const sectionsForTrip = (tripName: string): PlanSubcategory[] => {
+    const keys = new Set(sections.map((s) => s.key));
+    items
+      .filter((item) => item.tripName?.trim() === tripName)
+      .forEach((item) => keys.add(normalizeSection(item.subcategory)));
+    const labels = new Map(sections.map((s) => [s.key, s.label]));
+    const labelFor = (key: string) =>
+      labels.get(key) ??
+      key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return Array.from(keys).map((key) => ({
+      key,
+      label: labelFor(key),
+      builtIn: sections.find((s) => s.key === key)?.builtIn,
+    }));
+  };
 
   const firstSectionKey = sections[0]?.key ?? 'places';
 
@@ -115,10 +141,7 @@ export default function TravelPlanView({
   }, [onViewChange]);
 
   const itemsForTripSection = (tripName: string, sectionKey: string) =>
-    items.filter((item) => {
-      if (item.tripName?.trim() !== tripName) return false;
-      return normalizeSection(item.subcategory) === sectionKey;
-    });
+    items.filter((item) => itemMatchesSection(item, tripName, sectionKey));
 
   const confirmNewTrip = () => {
     const name = newTripName.trim();
@@ -186,7 +209,9 @@ export default function TravelPlanView({
         </View>
       ) : (
         <View style={styles.grid}>
-          {tripSummaries.map((trip) => (
+          {tripSummaries.map((trip) => {
+            const count = tripItemCount(items, trip.name);
+            return (
             <Pressable
               key={trip.name}
               style={({ pressed }) => [styles.cardWrap, pressed && styles.cardPressed]}
@@ -200,9 +225,13 @@ export default function TravelPlanView({
                 <Text style={styles.gridLabel} numberOfLines={3}>
                   {trip.name}
                 </Text>
+                {count > 0 ? (
+                  <Text style={[styles.gridCount, { color: accentDark }]}>{count} items</Text>
+                ) : null}
               </View>
             </Pressable>
-          ))}
+          );
+          })}
         </View>
       )}
 
@@ -247,9 +276,22 @@ export default function TravelPlanView({
   );
 
   const renderTripDetail = (tripName: string) => {
+    const tripSections = sectionsForTrip(tripName);
     const sectionKey = getSectionForTrip(tripName);
-    const sectionLabel = sections.find((s) => s.key === sectionKey)?.label;
-    const tripItems = itemsForTripSection(tripName, sectionKey);
+    let resolvedSectionKey = tripSections.some((s) => s.key === sectionKey)
+      ? sectionKey
+      : tripSections[0]?.key ?? sectionKey;
+    let tripItems = itemsForTripSection(tripName, resolvedSectionKey);
+    if (tripItems.length === 0) {
+      const withItems = tripSections.find(
+        (s) => itemsForTripSection(tripName, s.key).length > 0
+      );
+      if (withItems) {
+        resolvedSectionKey = withItems.key;
+        tripItems = itemsForTripSection(tripName, resolvedSectionKey);
+      }
+    }
+    const sectionLabel = tripSections.find((s) => s.key === resolvedSectionKey)?.label;
 
     if (editingTripName === tripName) {
       return (
@@ -314,11 +356,11 @@ export default function TravelPlanView({
           }
         />
 
-        {sections.length > 0 ? (
+        {tripSections.length > 0 ? (
           <View style={styles.sectionDropdown}>
             <ChecklistListDropdown
-              options={sections}
-              selected={sectionKey}
+              options={tripSections}
+              selected={resolvedSectionKey}
               onSelect={(key) => setSectionForTrip(tripName, key)}
               onManageLists={() => onEditSections?.()}
               theme={theme}
@@ -334,15 +376,15 @@ export default function TravelPlanView({
           items={tripItems}
           category={'travel_ideas' as PlanCategory}
           theme={theme}
-          subcategoryOptions={sections}
-          defaultSubcategoryKey={sectionKey}
+          subcategoryOptions={tripSections}
+          defaultSubcategoryKey={resolvedSectionKey}
           defaultTripName={tripName}
           sectionLabel={sectionLabel}
           onToggle={onToggle}
           onAdd={onAdd}
           onEdit={onEdit}
           onDelete={onDelete}
-          onClearCompleted={() => onClearCompleted(tripName, sectionKey)}
+          onClearCompleted={() => onClearCompleted(tripName, resolvedSectionKey)}
         />
       </View>
     );
@@ -410,6 +452,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 20,
     color: Theme.text,
+  },
+  gridCount: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '600',
   },
   sectionDropdown: {
     marginBottom: 4,

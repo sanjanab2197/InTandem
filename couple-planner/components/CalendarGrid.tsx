@@ -14,9 +14,10 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, Platform } from 'react-native';
 
 import { Theme } from '@/constants/Theme';
+import { CYCLE_THEME, cycleLogKindEmoji } from '@/constants/cycleTracking';
 import { resolveEventColor } from '@/constants/eventCategories';
 import { useApp } from '@/context/AppContext';
-import { CalendarEvent } from '@/types';
+import { CalendarEvent, CycleCalendarMarker } from '@/types';
 import {
   eventIncludesDate,
   getEventEndDate,
@@ -29,6 +30,10 @@ interface CalendarGridProps {
   onDayLongPress?: (date: string) => void;
   selectedDate?: string;
   crossedOffDates?: string[];
+  variant?: 'schedule' | 'cycle';
+  cycleMarkers?: Record<string, CycleCalendarMarker>;
+  visibleMonth?: Date;
+  onVisibleMonthChange?: (month: Date) => void;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -129,15 +134,95 @@ function getWeekSpan(event: CalendarEvent, week: Date[]): WeekSpan | null {
   };
 }
 
+function cycleCellTint(phase?: CycleCalendarMarker['phase']) {
+  switch (phase) {
+    case 'fertile':
+      return { backgroundColor: 'rgba(255, 236, 200, 0.5)', borderRadius: 12 };
+    default:
+      return null;
+  }
+}
+
+const FLO_BADGE_SIZE = 34;
+
+function FloCycleDayContent({
+  marker,
+  dayLabel,
+  inMonth,
+  today,
+  selected,
+}: {
+  marker?: CycleCalendarMarker;
+  dayLabel: string;
+  inMonth: boolean;
+  today: boolean;
+  selected: boolean;
+}) {
+  const hasPeriodLog = marker?.logKinds?.includes('period') || marker?.flow;
+  const isPeriod = marker?.phase === 'period' || hasPeriodLog;
+  const isPredicted = !isPeriod && marker?.phase === 'predicted_period';
+  const isOvulation = marker?.phase === 'ovulation';
+
+  const emojis = (marker?.logKinds ?? [])
+    .filter((kind) => kind !== 'period')
+    .slice(0, 3)
+    .map((kind) => cycleLogKindEmoji(kind))
+    .filter(Boolean);
+
+  return (
+    <View style={styles.floDayWrap}>
+      <View style={styles.floDayBadge}>
+        {isPeriod ? <View style={styles.periodCircleSolid} /> : null}
+        {isPredicted ? <View style={styles.periodCirclePredicted} /> : null}
+        {isOvulation && !isPeriod && !isPredicted ? <View style={styles.ovulationRing} /> : null}
+        <Text
+          style={[
+            styles.floDayNum,
+            !inMonth && styles.dayNumberOutside,
+            today && !isPeriod && !isPredicted && styles.dayNumberToday,
+            selected && !isPeriod && styles.dayNumberSelected,
+            isPeriod && styles.floDayNumOnPeriod,
+            isPredicted && styles.floDayNumPredicted,
+            isOvulation && !isPeriod && !isPredicted && styles.floDayNumOvulation,
+          ]}>
+          {dayLabel}
+        </Text>
+      </View>
+      {emojis.length > 0 ? (
+        <View style={styles.floEmojiRow}>
+          {emojis.map((emoji, i) => (
+            <Text key={`${emoji}-${i}`} style={styles.floEmoji}>
+              {emoji}
+            </Text>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.floEmojiSpacer} />
+      )}
+    </View>
+  );
+}
+
 export default function CalendarGrid({
   events,
   onDayPress,
   onDayLongPress,
   selectedDate,
   crossedOffDates = [],
+  variant = 'schedule',
+  cycleMarkers = {},
+  visibleMonth,
+  onVisibleMonthChange,
 }: CalendarGridProps) {
+  const isCycle = variant === 'cycle';
   const { eventCategories } = useApp();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [internalMonth, setInternalMonth] = useState(new Date());
+  const currentMonth = visibleMonth ?? internalMonth;
+
+  const setCurrentMonth = (next: Date) => {
+    onVisibleMonthChange?.(next);
+    if (!visibleMonth) setInternalMonth(next);
+  };
   const crossedOffSet = useMemo(() => new Set(crossedOffDates), [crossedOffDates]);
 
   const getDotColor = (event: CalendarEvent) => resolveEventColor(event, eventCategories);
@@ -159,6 +244,7 @@ export default function CalendarGrid({
   }, [days]);
 
   const weekSpanLanes = useMemo(() => {
+    if (isCycle) return weekRows.map(() => []);
     return weekRows.map((week) => {
       const items: EventWeekSpan[] = [];
       events.forEach((event) => {
@@ -169,9 +255,10 @@ export default function CalendarGrid({
       });
       return assignSpanLanes(items);
     });
-  }, [weekRows, events, eventCategories]);
+  }, [weekRows, events, eventCategories, isCycle]);
 
   const singleDayEventsByDate = useMemo(() => {
+    if (isCycle) return {} as Record<string, CalendarEvent[]>;
     const map: Record<string, CalendarEvent[]> = {};
     events.forEach((e) => {
       if (isMultiDayEvent(e)) return;
@@ -309,7 +396,7 @@ export default function CalendarGrid({
           const spanZoneHeight = weekSpanZoneHeight(lanes.length, metrics);
           const overflowHeight = hiddenLaneCount > 0 ? 10 : 0;
           const weekEventsZoneHeight = DOTS_ZONE_HEIGHT + spanZoneHeight + overflowHeight + 4;
-          const weekCellMinHeight = 48 + weekEventsZoneHeight;
+          const weekCellMinHeight = isCycle ? 56 : 48 + weekEventsZoneHeight;
 
           return (
           <View key={`week-${weekIndex}`} style={[styles.weekWrap, { minHeight: weekCellMinHeight }]}>
@@ -322,6 +409,8 @@ export default function CalendarGrid({
                 const selected = selectedDate === dateStr;
                 const crossedOff = crossedOffSet.has(dateStr);
                 const hasDots = singleDayEvents.length > 0;
+                const cycleMarker = cycleMarkers[dateStr];
+                const cellTint = isCycle ? cycleCellTint(cycleMarker?.phase) : null;
 
                 return (
                   <Pressable
@@ -329,44 +418,59 @@ export default function CalendarGrid({
                     style={[
                       styles.dayCell,
                       !inMonth && styles.dayCellOutside,
-                      today && styles.dayCellToday,
-                      selected && styles.dayCellSelected,
+                      today && !isCycle && styles.dayCellToday,
+                      selected && !isCycle && styles.dayCellSelected,
+                      cellTint,
                     ]}
                     onPress={() => onDayPress(dateStr)}
                     onLongPress={() => onDayLongPress?.(dateStr)}
                     delayLongPress={400}>
                     <View style={[styles.dayInner, { minHeight: weekCellMinHeight - 4 }]}>
-                      <View style={styles.dayNumberCenter} pointerEvents="none">
-                        <Text
-                          style={[
-                            styles.dayNumber,
-                            !inMonth && styles.dayNumberOutside,
-                            today && styles.dayNumberToday,
-                            selected && styles.dayNumberSelected,
-                          ]}>
-                          {format(day, 'd')}
-                        </Text>
-                      </View>
-
-                      <View style={[styles.eventsBottom, { height: weekEventsZoneHeight }]}>
-                        {lanes.length > 0 ? (
-                          <View style={{ height: spanZoneHeight + overflowHeight }} />
-                        ) : null}
-                        <View style={styles.dotsZone}>
-                          {hasDots ? (
-                            <View style={styles.dotsRow}>
-                              {singleDayEvents.slice(0, MAX_DOTS).map((ev) => (
-                                <View
-                                  key={ev.id}
-                                  style={[styles.dot, { backgroundColor: getDotColor(ev) }]}
-                                />
-                              ))}
-                            </View>
-                          ) : null}
+                      {isCycle ? (
+                        <View style={styles.floDayCenter} pointerEvents="none">
+                          <FloCycleDayContent
+                            marker={cycleMarker}
+                            dayLabel={format(day, 'd')}
+                            inMonth={inMonth}
+                            today={today}
+                            selected={selected}
+                          />
                         </View>
-                      </View>
+                      ) : (
+                        <>
+                          <View style={styles.dayNumberCenter} pointerEvents="none">
+                            <Text
+                              style={[
+                                styles.dayNumber,
+                                !inMonth && styles.dayNumberOutside,
+                                today && styles.dayNumberToday,
+                                selected && styles.dayNumberSelected,
+                              ]}>
+                              {format(day, 'd')}
+                            </Text>
+                          </View>
 
-                      {crossedOff ? (
+                          <View style={[styles.eventsBottom, { height: weekEventsZoneHeight }]}>
+                            {lanes.length > 0 ? (
+                              <View style={{ height: spanZoneHeight + overflowHeight }} />
+                            ) : null}
+                            <View style={styles.dotsZone}>
+                              {hasDots ? (
+                                <View style={styles.dotsRow}>
+                                  {singleDayEvents.slice(0, MAX_DOTS).map((ev) => (
+                                    <View
+                                      key={ev.id}
+                                      style={[styles.dot, { backgroundColor: getDotColor(ev) }]}
+                                    />
+                                  ))}
+                                </View>
+                              ) : null}
+                            </View>
+                          </View>
+                        </>
+                      )}
+
+                      {crossedOff && !isCycle ? (
                         <View style={styles.crossOffOverlay} pointerEvents="none">
                           <View style={styles.crossOffLine} />
                         </View>
@@ -624,6 +728,84 @@ const styles = StyleSheet.create({
     width: DOT_SIZE,
     height: DOT_SIZE,
     borderRadius: DOT_SIZE / 2,
+  },
+  logKindDot: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  floDayCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floDayWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 2,
+  },
+  floDayBadge: {
+    width: FLO_BADGE_SIZE,
+    height: FLO_BADGE_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  periodCircleSolid: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: FLO_BADGE_SIZE / 2,
+    backgroundColor: CYCLE_THEME.period,
+  },
+  periodCirclePredicted: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: FLO_BADGE_SIZE / 2,
+    backgroundColor: CYCLE_THEME.periodPredicted,
+    borderWidth: 1.5,
+    borderColor: 'rgba(217, 98, 130, 0.55)',
+  },
+  ovulationRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: FLO_BADGE_SIZE / 2,
+    borderWidth: 2,
+    borderColor: CYCLE_THEME.ovulation,
+    backgroundColor: 'rgba(135, 112, 198, 0.12)',
+  },
+  floDayNum: {
+    width: FLO_BADGE_SIZE,
+    height: FLO_BADGE_SIZE,
+    fontSize: 14,
+    fontWeight: '600',
+    color: Theme.text,
+    lineHeight: FLO_BADGE_SIZE,
+    textAlign: 'center',
+    zIndex: 2,
+    ...(Platform.OS === 'android' ? { includeFontPadding: false, textAlignVertical: 'center' } : {}),
+  },
+  floDayNumOnPeriod: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  floDayNumPredicted: {
+    color: CYCLE_THEME.accentDark,
+    fontWeight: '700',
+  },
+  floDayNumOvulation: {
+    color: CYCLE_THEME.ovulation,
+    fontWeight: '700',
+  },
+  floEmojiRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 1,
+    marginTop: 1,
+    minHeight: 11,
+  },
+  floEmojiSpacer: {
+    height: 12,
+  },
+  floEmoji: {
+    fontSize: 9,
+    lineHeight: 11,
   },
   crossOffOverlay: {
     position: 'absolute',

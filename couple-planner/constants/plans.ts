@@ -36,7 +36,9 @@ export const PLAN_SUBCATEGORIES: Record<PlanCategoryWithSubcategories, PlanSubca
     { key: 'places', label: 'Itinerary' },
     { key: 'dining', label: 'Restaurants & Food' },
     { key: 'nightlife', label: 'Bars & Nightlife' },
-    { key: 'packing', label: 'Packing' },
+    { key: 'stays', label: 'Where to Stay' },
+    { key: 'packing', label: 'Weather & Packing' },
+    { key: 'logistics', label: 'Logistics' },
     { key: 'budget', label: 'Budget & Tips' },
   ],
   enrichment_ideas: [

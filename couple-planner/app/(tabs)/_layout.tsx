@@ -20,6 +20,7 @@ export default function TabLayout() {
         tabBarLabelStyle: { fontSize: 11, fontFamily: Fonts.semiBold },
         headerShown: true,
         header: () => <AppHeaderBar />,
+        sceneStyle: { flex: 1 },
       }}>
       <Tabs.Screen
         name="index"

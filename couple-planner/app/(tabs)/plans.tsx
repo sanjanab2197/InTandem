@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import AiAgentView from '@/components/AiAgentView';
@@ -9,6 +9,7 @@ import ExpenseflowView from '@/components/ExpenseflowView';
 import KeyDatesView from '@/components/KeyDatesView';
 import PlansHomeGrid from '@/components/PlansHomeGrid';
 import PlanSectionHeader from '@/components/PlanSectionHeader';
+import { useAppStateRemoteActions } from '@/components/AppDataSync';
 import { useReminderRemoteActions } from '@/components/ReminderSync';
 import RemindersView from '@/components/RemindersView';
 import SubcategoryManager from '@/components/SubcategoryManager';
@@ -22,6 +23,7 @@ import { PlanCategory } from '@/types';
 export default function PlansScreen() {
   const { couple } = useCouple();
   const { syncAllToRemote, pushReminder, removeRemote } = useReminderRemoteActions();
+  const { pushAppStateNow } = useAppStateRemoteActions();
   const {
     loading,
     addPlanItem,
@@ -51,6 +53,7 @@ export default function PlansScreen() {
   const [subcategoryFilter, setSubcategoryFilter] = useState('');
   const [manageSubcategories, setManageSubcategories] = useState(false);
   const [travelInDetail, setTravelInDetail] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const isHome = category === null;
   const isChecklist = category === 'weekly_checklist';
@@ -136,7 +139,7 @@ export default function PlansScreen() {
     : isKeyDates
     ? 'Save birthdays, anniversaries, and milestones you never want to forget'
     : isAiAgent
-    ? 'Generate a couple travel itinerary with Gemini and save it to Travel Ideas'
+    ? 'Top-rated food, day trips, weather, stays & logistics — auto-saved to Travel Ideas'
     : isAiMeal
     ? 'Turn your Groceries checklist into a recipe and save it to Meals'
     : isExpenseflow
@@ -156,6 +159,7 @@ export default function PlansScreen() {
   return (
     <View style={styles.container}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
@@ -213,6 +217,12 @@ export default function PlansScreen() {
           <AiAgentView
             theme={planTheme}
             onAddToTravel={(inputs) => addPlanItemsBatch('travel_ideas', inputs)}
+            onSaved={pushAppStateNow}
+            onPlanReady={() => {
+              requestAnimationFrame(() => {
+                scrollRef.current?.scrollTo({ y: 0, animated: true });
+              });
+            }}
             onOpenTravel={() => handleCategoryChange('travel_ideas')}
           />
         ) : isAiMeal ? (
@@ -220,6 +230,7 @@ export default function PlansScreen() {
             theme={planTheme}
             groceries={groceryItems}
             onAddToMeals={(inputs) => addPlanItemsBatch('weekly_checklist', inputs)}
+            onSaved={pushAppStateNow}
             onOpenChecklist={() => {
               handleCategoryChange('weekly_checklist');
               setSubcategoryFilter('meals');

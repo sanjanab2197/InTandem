@@ -1,6 +1,6 @@
 import { addDays, format, parseISO } from 'date-fns';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import DayTimelineView from '@/components/DayTimelineView';
@@ -99,7 +99,7 @@ export default function EventDetailModal({
   if (!visible) return null;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, Platform.OS === 'web' && styles.containerWeb]}>
       {schedulerOpen ? (
         <EventSchedulerSheet
           key={editing?.id ?? `new-${slotMinutes}-${allDayCreate}`}
@@ -156,6 +156,7 @@ export default function EventDetailModal({
 
 const styles = StyleSheet.create({
   container: { flex: 1, minHeight: 0, backgroundColor: Theme.surface, overflow: 'hidden' },
+  containerWeb: { height: '100%' },
   timelineWrap: { flex: 1, minHeight: 0 },
   fab: {
     position: 'absolute',

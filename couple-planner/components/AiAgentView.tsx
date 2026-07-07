@@ -1,3 +1,4 @@
+import { format, addMonths } from 'date-fns';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -11,6 +12,7 @@ import {
   View,
 } from 'react-native';
 
+import CalendarDatePicker from '@/components/CalendarDatePicker';
 import { isGeminiConfigured } from '@/constants/geminiConfig';
 import { PlanCategoryTheme, PlansUI } from '@/constants/plansTheme';
 import { Theme } from '@/constants/Theme';
@@ -21,16 +23,22 @@ import {
   getAiAgentRemainingToday,
 } from '@/utils/aiAgentUsage';
 import {
+  DIETARY_OPTIONS,
   generateTravelItinerary,
   itineraryToPlanInputs,
+  TRAVEL_RADIUS_OPTIONS,
   TravelBudgetLevel,
   TravelItineraryResult,
+  TravelRadius,
+  DietaryPreference,
 } from '@/utils/geminiTravelItinerary';
 
 interface AiAgentViewProps {
   theme: PlanCategoryTheme;
   onAddToTravel: (inputs: AddPlanItemInput[]) => void;
   onOpenTravel?: () => void;
+  onSaved?: () => Promise<void>;
+  onPlanReady?: (itemCount: number) => void;
 }
 
 const DAY_PRESETS = [
@@ -60,7 +68,7 @@ function resolveDays(dayKey: string, customDays: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAgentViewProps) {
+export default function AiAgentView({ theme, onAddToTravel, onOpenTravel, onSaved, onPlanReady }: AiAgentViewProps) {
   const { accent, accentDark, accentLight, accentMuted } = theme;
 
   const [destination, setDestination] = useState('');
@@ -69,6 +77,10 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
   const [customDays, setCustomDays] = useState('6');
   const [daysOpen, setDaysOpen] = useState(false);
   const [budgetLevel, setBudgetLevel] = useState<TravelBudgetLevel>('mid');
+  const [travelRadius, setTravelRadius] = useState<TravelRadius>('regional');
+  const [dietaryPreference, setDietaryPreference] = useState<DietaryPreference>('none');
+  const [startDate, setStartDate] = useState(() => addMonths(new Date(), 1));
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [foodPreferences, setFoodPreferences] = useState('');
   const [nightlifePreferences, setNightlifePreferences] = useState('');
   const [generalPreferences, setGeneralPreferences] = useState('');
@@ -76,9 +88,15 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
   const [result, setResult] = useState<TravelItineraryResult | null>(null);
   const [remaining, setRemaining] = useState(getAiAgentDailyLimit('travel'));
   const [saved, setSaved] = useState(false);
+  const [formCollapsed, setFormCollapsed] = useState(false);
+
+  const resolvedTripName = tripName.trim() || destination.trim();
+  const itemCount = useMemo(() => {
+    if (!result) return 0;
+    return itineraryToPlanInputs(result, resolvedTripName).length;
+  }, [result, resolvedTripName]);
 
   const configured = isGeminiConfigured();
-  const resolvedTripName = tripName.trim() || destination.trim();
   const resolvedDays = resolveDays(dayKey, customDays);
   const dayLabel = useMemo(() => {
     if (dayKey === 'custom') {
@@ -91,6 +109,35 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
   useEffect(() => {
     getAiAgentRemainingToday('travel').then(setRemaining);
   }, []);
+
+  const persistItinerary = async (itinerary: TravelItineraryResult, tripLabel: string) => {
+    const rows = itineraryToPlanInputs(itinerary, tripLabel);
+    if (rows.length === 0) return;
+    onAddToTravel(
+      rows.map((row) => ({
+        text: row.text,
+        subcategory: row.subcategory,
+        tripName: tripLabel,
+        tags: ['ai-generated'],
+      }))
+    );
+    setSaved(true);
+    try {
+      await onSaved?.();
+    } catch {
+      Alert.alert(
+        'Saved on this device',
+        'Could not sync to the cloud right now. Your trip is saved locally and will retry syncing automatically.'
+      );
+    }
+  };
+
+  const showPlan = (itinerary: TravelItineraryResult) => {
+    setResult(itinerary);
+    setFormCollapsed(true);
+    const count = itineraryToPlanInputs(itinerary, resolvedTripName).length;
+    onPlanReady?.(count);
+  };
 
   const handleGenerate = async () => {
     if (!configured) {
@@ -129,12 +176,29 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
         destination: destination.trim(),
         tripName: resolvedTripName,
         days: resolvedDays,
+        startDate: format(startDate, 'yyyy-MM-dd'),
+        travelRadius,
+        dietaryPreference,
         budgetLevel,
         foodPreferences: foodPreferences.trim() || undefined,
         nightlifePreferences: nightlifePreferences.trim() || undefined,
         generalPreferences: generalPreferences.trim() || undefined,
       });
-      setResult(itinerary);
+      showPlan(itinerary);
+      const count = itineraryToPlanInputs(itinerary, resolvedTripName).length;
+      Alert.alert(
+        'Trip plan ready',
+        count > 0
+          ? `Added ${count} items to Travel Ideas under “${resolvedTripName}”.`
+          : `Plan created for “${resolvedTripName}”. Open Travel Ideas to view.`,
+        onOpenTravel
+          ? [
+              { text: 'View here', style: 'cancel' },
+              { text: 'Open Travel Ideas', onPress: onOpenTravel },
+            ]
+          : [{ text: 'OK' }]
+      );
+      void persistItinerary(itinerary, resolvedTripName);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Something went wrong.';
       Alert.alert('Could not generate', message);
@@ -143,21 +207,21 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
     }
   };
 
-  const handleSaveToTravel = () => {
+  const handleSaveToTravel = async () => {
     if (!result || !resolvedTripName) return;
-    const rows = itineraryToPlanInputs(result, resolvedTripName);
-    onAddToTravel(
-      rows.map((row) => ({
-        text: row.text,
-        subcategory: row.subcategory,
-        tripName: resolvedTripName,
-        tags: ['ai-generated'],
-      }))
-    );
-    setSaved(true);
+    if (saved) {
+      try {
+        await onSaved?.();
+      } catch {
+        Alert.alert('Sync pending', 'Could not reach the cloud. Will retry automatically.');
+      }
+      if (onOpenTravel) onOpenTravel();
+      return;
+    }
+    await persistItinerary(result, resolvedTripName);
     Alert.alert(
       'Saved to Travel Ideas',
-      `Added ${rows.length} items under “${resolvedTripName}”.`,
+      `Added items under “${resolvedTripName}”.`,
       onOpenTravel
         ? [
             { text: 'Stay here', style: 'cancel' },
@@ -172,13 +236,52 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
       <View style={styles.header}>
         <Text style={[styles.title, { color: accentDark }]}>Plan a trip</Text>
         <Text style={styles.subtitle}>
-          Build a full itinerary — days, dining, bars, packing, and budget — then save it to Travel
-          Ideas.
+          Top-rated dining, day trips beyond downtown, weather, where to stay, and logistics — saved
+          automatically to Travel Ideas.
         </Text>
         <Text style={styles.quota}>
           {remaining}/{getAiAgentDailyLimit('travel')} generations left today
         </Text>
       </View>
+
+      {result ? (
+        <View style={[styles.preview, styles.previewFirst, { borderColor: accentLight }]}>
+          <View style={styles.previewBanner}>
+            <Text style={[styles.previewBannerText, { color: accentDark }]}>
+              {saved ? '✓ Saved to Travel Ideas' : 'Saving…'} · {itemCount} items
+            </Text>
+          </View>
+          <Text style={[styles.previewTitle, { color: accentDark }]}>{resolvedTripName}</Text>
+          <Text style={styles.previewSummary}>{result.summary}</Text>
+
+          <PreviewBlock title="Weather" items={result.weather} accent={accentDark} />
+          <PreviewBlock title="Itinerary" items={result.places} accent={accentDark} />
+          <PreviewBlock title="Day trips" items={result.dayTrips} accent={accentDark} />
+          <PreviewBlock title="Restaurants" items={result.restaurants} accent={accentDark} />
+          <PreviewBlock title="Bars" items={result.bars} accent={accentDark} />
+          <PreviewBlock title="Where to stay" items={result.stays} accent={accentDark} />
+          <PreviewBlock title="What to wear & pack" items={result.packing} accent={accentDark} />
+          <PreviewBlock title="Logistics" items={result.logistics} accent={accentDark} />
+          <PreviewBlock title="Budget" items={result.budget} accent={accentDark} />
+          <PreviewBlock title="Local tips" items={result.tips} accent={accentDark} />
+
+          {!hasPreviewContent(result) ? (
+            <Text style={styles.previewEmpty}>
+              The plan loaded but sections were empty — try generating again.
+            </Text>
+          ) : null}
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.secondaryBtn,
+              { backgroundColor: accentDark },
+              pressed && styles.secondaryBtnPressed,
+            ]}
+            onPress={handleSaveToTravel}>
+            <Text style={styles.secondaryBtnText}>Open Travel Ideas</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {!configured ? (
         <View style={[styles.notice, { borderColor: accentLight }]}>
@@ -189,13 +292,20 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
         </View>
       ) : null}
 
+      {formCollapsed && result ? (
+        <Pressable style={styles.expandFormBtn} onPress={() => setFormCollapsed(false)}>
+          <Text style={[styles.expandFormText, { color: accentDark }]}>Edit trip details</Text>
+        </Pressable>
+      ) : null}
+
+      {!formCollapsed || !result ? (
       <View style={[styles.card, PlansUI.cardShadow]}>
         <Field label="Destination">
           <TextInput
             style={styles.input}
             value={destination}
             onChangeText={setDestination}
-            placeholder="Lisbon, Portugal"
+            placeholder="San Francisco, CA"
             placeholderTextColor={Theme.textSecondary}
           />
         </Field>
@@ -233,6 +343,39 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
           ) : null}
         </Field>
 
+        <Field label="Start date (for weather)">
+          <Pressable
+            style={[styles.select, { borderColor: Theme.border }]}
+            onPress={() => setDatePickerOpen(true)}>
+            <Text style={styles.selectText}>{format(startDate, 'EEE, MMM d, yyyy')}</Text>
+            <Text style={[styles.chevron, { color: accent }]}>▾</Text>
+          </Pressable>
+        </Field>
+
+        <Field label="How far will you go?">
+          <Text style={styles.fieldHint}>
+            Include Napa from SF, Multnomah Falls from Portland, etc.
+          </Text>
+          <View style={styles.chipRow}>
+            {TRAVEL_RADIUS_OPTIONS.map((opt) => {
+              const selected = travelRadius === opt.key;
+              return (
+                <Pressable
+                  key={opt.key}
+                  style={[
+                    styles.chip,
+                    selected && { backgroundColor: accentMuted, borderColor: accent },
+                  ]}
+                  onPress={() => setTravelRadius(opt.key)}>
+                  <Text style={[styles.chipText, selected && { color: accentDark, fontWeight: '700' }]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Field>
+
         <Field label="Budget">
           <View style={styles.chipRow}>
             {BUDGET_OPTIONS.map((opt) => {
@@ -254,12 +397,36 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
           </View>
         </Field>
 
-        <Field label="Food & restaurants">
+        <Field label="Dietary needs">
+          <Text style={styles.fieldHint}>
+            Top-rated spots with great options — not just dedicated diet restaurants.
+          </Text>
+          <View style={styles.chipRow}>
+            {DIETARY_OPTIONS.map((opt) => {
+              const selected = dietaryPreference === opt.key;
+              return (
+                <Pressable
+                  key={opt.key}
+                  style={[
+                    styles.chip,
+                    selected && { backgroundColor: accentMuted, borderColor: accent },
+                  ]}
+                  onPress={() => setDietaryPreference(opt.key)}>
+                  <Text style={[styles.chipText, selected && { color: accentDark, fontWeight: '700' }]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Field>
+
+        <Field label="Food & restaurants (extra)">
           <TextInput
             style={[styles.input, styles.multiline]}
             value={foodPreferences}
             onChangeText={setFoodPreferences}
-            placeholder="Seafood, vegetarian, local markets, romantic dinners…"
+            placeholder="Indian food, omakase, farmers markets, avoid chains…"
             placeholderTextColor={Theme.textSecondary}
             multiline
           />
@@ -303,31 +470,6 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
           )}
         </Pressable>
       </View>
-
-      {result ? (
-        <View style={[styles.preview, { borderColor: accentLight }]}>
-          <Text style={[styles.previewTitle, { color: accentDark }]}>{resolvedTripName}</Text>
-          <Text style={styles.previewSummary}>{result.summary}</Text>
-
-          <PreviewBlock title="Itinerary" items={result.places} accent={accentDark} />
-          <PreviewBlock title="Restaurants" items={result.restaurants} accent={accentDark} />
-          <PreviewBlock title="Bars" items={result.bars} accent={accentDark} />
-          <PreviewBlock title="Packing list" items={result.packing} accent={accentDark} />
-          <PreviewBlock title="Budget" items={result.budget} accent={accentDark} />
-          <PreviewBlock title="Tips" items={result.tips} accent={accentDark} />
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.secondaryBtn,
-              { backgroundColor: saved ? Theme.textSecondary : accentDark },
-              pressed && styles.secondaryBtnPressed,
-            ]}
-            onPress={handleSaveToTravel}>
-            <Text style={styles.secondaryBtnText}>
-              {saved ? 'Saved to Travel Ideas ✓' : 'Save to Travel Ideas'}
-            </Text>
-          </Pressable>
-        </View>
       ) : null}
 
       <Modal visible={daysOpen} transparent animationType="fade" onRequestClose={() => setDaysOpen(false)}>
@@ -364,7 +506,33 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel }: AiAg
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal visible={datePickerOpen} transparent animationType="fade" onRequestClose={() => setDatePickerOpen(false)}>
+        <Pressable style={styles.overlay} onPress={() => setDatePickerOpen(false)}>
+          <Pressable style={[styles.datePickerCard, PlansUI.cardShadow]} onPress={() => {}}>
+            <Text style={styles.menuTitle}>Trip start date</Text>
+            <CalendarDatePicker
+              value={startDate}
+              minimumDate={new Date()}
+              onChange={setStartDate}
+              onSelect={() => setDatePickerOpen(false)}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
+  );
+}
+
+function hasPreviewContent(result: TravelItineraryResult): boolean {
+  return (
+    result.places.length +
+      result.restaurants.length +
+      result.dayTrips.length +
+      result.stays.length +
+      result.packing.length +
+      result.logistics.length >
+    0
   );
 }
 
@@ -432,6 +600,12 @@ const styles = StyleSheet.create({
     color: Theme.textSecondary,
     marginBottom: 8,
   },
+  fieldHint: {
+    fontSize: 12,
+    color: Theme.textSecondary,
+    lineHeight: 17,
+    marginBottom: 8,
+  },
   input: {
     backgroundColor: Theme.background,
     borderRadius: 12,
@@ -486,8 +660,27 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     padding: 16,
-    marginBottom: 8,
+    marginBottom: 16,
   },
+  previewFirst: {
+    borderWidth: 2,
+  },
+  previewBanner: {
+    backgroundColor: Theme.background,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  previewBannerText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  previewEmpty: {
+    fontSize: 13,
+    color: Theme.textSecondary,
+    fontStyle: 'italic',
+    marginBottom: 12,
+  },
+  expandFormBtn: { alignSelf: 'center', marginBottom: 12, paddingVertical: 8 },
+  expandFormText: { fontSize: 14, fontWeight: '600' },
   previewTitle: { fontSize: 17, fontWeight: '700', marginBottom: 4 },
   previewSummary: {
     fontSize: 14,
@@ -542,4 +735,11 @@ const styles = StyleSheet.create({
   menuBar: { width: 3, height: 22, borderRadius: 2 },
   menuBarPlaceholder: { width: 3 },
   menuItemText: { flex: 1, fontSize: 16, color: Theme.text },
+  datePickerCard: {
+    backgroundColor: Theme.surface,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Theme.border,
+  },
 });

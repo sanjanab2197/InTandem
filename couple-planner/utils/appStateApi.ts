@@ -8,6 +8,7 @@ interface AppStateRow {
   plan_items: AppStatePayload['planItems'];
   expenses: AppStatePayload['expenses'];
   key_dates: AppStatePayload['keyDates'];
+  cycle_data?: AppStatePayload['cycleData'];
   plan_subcategories: AppStatePayload['planSubcategories'];
   event_categories: AppStatePayload['eventCategories'];
   weekly_goals: AppStatePayload['weeklyGoals'];
@@ -21,6 +22,7 @@ function rowToPayload(row: AppStateRow): AppStatePayload {
     planItems: row.plan_items ?? [],
     expenses: row.expenses ?? [],
     keyDates: row.key_dates ?? [],
+    cycleData: row.cycle_data ?? undefined,
     planSubcategories: row.plan_subcategories ?? undefined,
     eventCategories: row.event_categories ?? undefined,
     weeklyGoals: row.weekly_goals ?? {},
@@ -35,6 +37,7 @@ function payloadToRow(payload: AppStatePayload, updatedBy?: string) {
     plan_items: payload.planItems,
     expenses: payload.expenses,
     key_dates: payload.keyDates ?? [],
+    cycle_data: payload.cycleData ?? null,
     plan_subcategories: payload.planSubcategories ?? null,
     event_categories: payload.eventCategories ?? null,
     weekly_goals: payload.weeklyGoals,
@@ -63,10 +66,13 @@ export async function upsertCoupleAppState(
   payload: AppStatePayload
 ): Promise<void> {
   const supabase = getSupabase();
-  const { error } = await supabase.from('couple_app_state').upsert({
-    couple_id: coupleId,
-    ...payloadToRow(payload, userId),
-  });
+  const { error } = await supabase.from('couple_app_state').upsert(
+    {
+      couple_id: coupleId,
+      ...payloadToRow(payload, userId),
+    },
+    { onConflict: 'couple_id' }
+  );
 
   if (error) throw new Error(error.message);
 }
@@ -86,10 +92,13 @@ export async function fetchUserAppState(userId: string): Promise<AppStatePayload
 
 export async function upsertUserAppState(userId: string, payload: AppStatePayload): Promise<void> {
   const supabase = getSupabase();
-  const { error } = await supabase.from('user_app_state').upsert({
-    user_id: userId,
-    ...payloadToRow(payload),
-  });
+  const { error } = await supabase.from('user_app_state').upsert(
+    {
+      user_id: userId,
+      ...payloadToRow(payload),
+    },
+    { onConflict: 'user_id' }
+  );
 
   if (error) throw new Error(error.message);
 }

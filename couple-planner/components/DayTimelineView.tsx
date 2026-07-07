@@ -24,6 +24,29 @@ const GUTTER_WIDTH = 52;
 const PARTICIPANT_STRIPE_WIDTH = 5;
 const SLOT_LONG_PRESS_MS = 280;
 
+function TimelineLongPressLayer({
+  height,
+  onSlotPress,
+}: {
+  height: number;
+  onSlotPress: (startMinutes: number) => void;
+}) {
+  if (Platform.OS === 'web') {
+    return null;
+  }
+
+  return (
+    <Pressable
+      style={[styles.slotOverlay, { height }]}
+      delayLongPress={SLOT_LONG_PRESS_MS}
+      onLongPress={(event) => {
+        const y = event.nativeEvent.locationY ?? 0;
+        onSlotPress(minutesFromTimelineY(y));
+      }}
+    />
+  );
+}
+
 function participantStripeColor(event: CalendarEvent): string {
   return getParticipantTheme(normalizeParticipant(event.participant)).color;
 }
@@ -141,9 +164,8 @@ export default function DayTimelineView({
         ref={scrollRef}
         style={[styles.scroll, Platform.OS === 'web' && styles.scrollWeb]}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={Platform.OS === 'web'}
         nestedScrollEnabled
-        bounces={false}
         {...(Platform.OS === 'web' ? { dataSet: { timelineScroll: 'true' } } : {})}>
         <View style={styles.allDayRow}>
           <Text style={styles.gutterLabel}>All-day</Text>
@@ -203,14 +225,7 @@ export default function DayTimelineView({
               />
             ))}
 
-            <Pressable
-              style={[styles.slotOverlay, { height: TIMELINE_TOTAL_HEIGHT }]}
-              delayLongPress={SLOT_LONG_PRESS_MS}
-              onLongPress={(event) => {
-                const y = event.nativeEvent.locationY ?? 0;
-                onSlotPress(minutesFromTimelineY(y));
-              }}
-            />
+            <TimelineLongPressLayer height={TIMELINE_TOTAL_HEIGHT} onSlotPress={onSlotPress} />
 
             {isToday ? (
               <View style={[styles.nowRow, { top: nowTop - 10 }]} pointerEvents="none">
@@ -340,9 +355,7 @@ const styles = StyleSheet.create({
   },
   scroll: { flex: 1, minHeight: 0 },
   scrollWeb: {
-    scrollbarWidth: 'none',
-    // @ts-expect-error legacy Edge
-    msOverflowStyle: 'none',
+    overflowY: 'auto',
   },
   scrollContent: { paddingBottom: 88 },
   allDayRow: {

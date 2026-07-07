@@ -1,10 +1,21 @@
 import {
   AppStatePayload,
+  CalendarEvent,
   CategoryGoals,
   EventCategoryConfig,
+  PlanItem,
   PlanSubcategoriesByCategory,
 } from '@/types';
 import { normalizeCalendarEvents } from '@/utils/calendarEventRecord';
+import { mergeCycleData } from '@/utils/cycleMerge';
+
+/** Union calendar events by id so sync does not drop unsynced local entries. */
+export function mergeEventsById(local: CalendarEvent[], remote: CalendarEvent[]): CalendarEvent[] {
+  const map = new Map<string, CalendarEvent>();
+  for (const item of normalizeCalendarEvents(remote)) map.set(item.id, item);
+  for (const item of normalizeCalendarEvents(local)) map.set(item.id, item);
+  return Array.from(map.values());
+}
 
 function mergeByKey<T extends { key: string }>(local: T[], remote: T[]): T[] {
   const map = new Map<string, T>();
@@ -62,6 +73,14 @@ function mergeGoals(local: CategoryGoals, remote: CategoryGoals): CategoryGoals 
   return { ...local, ...remote };
 }
 
+/** Union plan items by id so a newer remote snapshot does not drop freshly saved local rows. */
+export function mergePlanItemsById(local: PlanItem[], remote: PlanItem[]): PlanItem[] {
+  const map = new Map<string, PlanItem>();
+  for (const item of remote) map.set(item.id, item);
+  for (const item of local) map.set(item.id, item);
+  return Array.from(map.values());
+}
+
 /** Lists with deletions must come from the newer payload — union merge resurrects deleted rows. */
 function pickSyncedLists(
   a: AppStatePayload,
@@ -86,10 +105,15 @@ export function mergeAppStatePayload(a: AppStatePayload, b: AppStatePayload): Ap
   const lists = pickSyncedLists(a, b);
 
   return {
-    ...lists,
+    events: mergeEventsById(a.events, b.events),
+    planItems: mergePlanItemsById(a.planItems, b.planItems),
+    expenses: lists.expenses,
+    keyDates: lists.keyDates,
+    crossedOffDates: lists.crossedOffDates,
     planSubcategories: mergeSubcategories(a.planSubcategories, b.planSubcategories),
     eventCategories: mergeEventCategories(a.eventCategories, b.eventCategories),
     weeklyGoals: mergeGoals(a.weeklyGoals, b.weeklyGoals),
+    cycleData: mergeCycleData(a.cycleData, b.cycleData),
     updatedAt: primary.updatedAt ?? new Date().toISOString(),
   };
 }
@@ -107,10 +131,6 @@ export function isEmptyAppState(payload: AppStatePayload): boolean {
 }
 
 export function pickNewerAppState(local: AppStatePayload, remote: AppStatePayload): AppStatePayload {
-  const localTime = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
-  const remoteTime = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
-  if (remoteTime > localTime) return remote;
-  if (localTime > remoteTime) return local;
   return mergeAppStatePayload(local, remote);
 }
 
@@ -123,7 +143,14 @@ export function resolveAppStateOnPull(
 ): { action: 'upsert'; payload: AppStatePayload } | { action: 'apply'; payload: AppStatePayload } {
   if (scopeChanged) {
     if (remote) {
-      return { action: 'apply', payload: remote };
+      const merged = mergeAppStatePayload(local, remote);
+      if (!isEmptyAppState(local)) {
+        return { action: 'upsert', payload: merged };
+      }
+      return { action: 'apply', payload: merged };
+    }
+    if (!isEmptyAppState(local)) {
+      return { action: 'upsert', payload: local };
     }
     return {
       action: 'apply',
@@ -136,6 +163,7 @@ export function resolveAppStateOnPull(
         eventCategories: undefined,
         weeklyGoals: {},
         crossedOffDates: [],
+        cycleData: undefined,
         updatedAt: new Date().toISOString(),
       },
     };

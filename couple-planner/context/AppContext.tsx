@@ -33,6 +33,11 @@ import {
   CalendarEvent,
   CategoryGoals,
   CoupleProfile,
+  CycleData,
+  CycleLogKind,
+  CycleOwner,
+  CycleProfile,
+  CycleSettings,
   EventCategoryConfig,
   Expense,
   KeyDate,
@@ -46,7 +51,16 @@ import {
   cancelReminderNotification,
 } from '@/utils/reminderNotifications';
 import { pruneOldSettledExpenses } from '@/utils/expenseHistory';
+import { createDefaultCycleData, mergeCycleData } from '@/utils/cycleMerge';
+import {
+  applyCycleLogUpdate,
+  cycleOwnerFromSlot,
+  getOwnerProfile,
+  normalizeCycleData,
+  patchCycleSettings,
+} from '@/utils/cycleTracking';
 import { touchReminder, mergeReminders } from '@/utils/reminderMerge';
+import { mergeAppStatePayload } from '@/utils/appStateMerge';
 
 const LEGACY_STORAGE_KEY = '@together_app_data';
 const LEGACY_SYNC_META_KEY = '@together_sync_meta';
@@ -88,6 +102,7 @@ const DEFAULT_DATA: AppData = {
   profile: DEFAULT_PROFILE,
   weeklyGoals: DEFAULT_WEEKLY_GOALS,
   crossedOffDates: [],
+  cycleData: createDefaultCycleData(),
 };
 
 const SYNCABLE_FIELDS: (keyof AppData)[] = [
@@ -99,6 +114,7 @@ const SYNCABLE_FIELDS: (keyof AppData)[] = [
   'eventCategories',
   'weeklyGoals',
   'crossedOffDates',
+  'cycleData',
 ];
 
 function hasSyncableChange(prev: AppData, next: AppData): boolean {
@@ -146,6 +162,7 @@ interface AppContextValue {
   replaceAppStateFromRemote: (payload: AppStatePayload) => void;
   getAppStatePayload: () => AppStatePayload;
   touchAppStateChange: () => void;
+  registerAppStatePushScheduler: (scheduler: (() => void) | null) => void;
   getSyncMeta: () => SyncMeta;
   setLastAppliedRemoteAt: (iso: string) => void;
   resetSyncScope: (userId: string, coupleId: string | null) => void;
@@ -170,6 +187,14 @@ interface AppContextValue {
   crossedOffDates: string[];
   toggleCrossOffDate: (date: string) => void;
   isDateCrossedOff: (date: string) => boolean;
+  cycleData: CycleData;
+  getCycleProfile: (owner: CycleOwner) => CycleProfile;
+  canViewCycleProfile: (owner: CycleOwner, mySlot?: 1 | 2 | null) => boolean;
+  updateCycleSettings: (owner: CycleOwner, patch: Partial<CycleSettings>) => void;
+  setCycleLog: (owner: CycleOwner, date: string, kind: CycleLogKind, value: string, notes?: string) => void;
+  addCustomCycleLog: (owner: CycleOwner, date: string, text: string) => void;
+  removeCycleLog: (owner: CycleOwner, logId: string) => void;
+  markPeriodStart: (owner: CycleOwner, date: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -183,9 +208,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [syncMeta, setSyncMeta] = useState<SyncMeta>(DEFAULT_SYNC_META);
   const syncMetaRef = useRef<SyncMeta>(DEFAULT_SYNC_META);
   const userIdRef = useRef<string | undefined>(userId);
+  const dataRef = useRef<AppData>(DEFAULT_DATA);
   const persistEnabledRef = useRef(false);
+  const pushSchedulerRef = useRef<(() => void) | null>(null);
   const loading = authLoading || !storageReady || (!!userId && !remoteSyncReady);
   userIdRef.current = userId;
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   useEffect(() => {
     syncMetaRef.current = syncMeta;
@@ -254,6 +285,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             expenses: pruneOldSettledExpenses(parsed.expenses ?? []),
             keyDates: parsed.keyDates ?? [],
             crossedOffDates: parsed.crossedOffDates ?? [],
+            cycleData: normalizeCycleData(parsed.cycleData),
           });
           return;
         }
@@ -278,6 +310,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             expenses: pruneOldSettledExpenses(parsed.expenses ?? []),
             keyDates: parsed.keyDates ?? [],
             crossedOffDates: parsed.crossedOffDates ?? [],
+            cycleData: normalizeCycleData(parsed.cycleData),
           };
           setData(migrated);
           await AsyncStorage.setItem(storageKey(userId), JSON.stringify(migrated));
@@ -321,6 +354,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     (updater: AppData | ((prev: AppData) => AppData), options?: { fromRemote?: boolean }) => {
       setData((prev) => {
         const next = typeof updater === 'function' ? updater(prev) : updater;
+        dataRef.current = next;
         const uid = userIdRef.current;
         if (!persistEnabledRef.current || !uid) {
           return next;
@@ -334,6 +368,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           syncMetaRef.current = meta;
           setSyncMeta(meta);
           AsyncStorage.setItem(syncMetaKey(uid), JSON.stringify(meta));
+          pushSchedulerRef.current?.();
         }
         AsyncStorage.setItem(storageKey(uid), JSON.stringify(next));
         return next;
@@ -579,20 +614,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const replaceAppStateFromRemote = useCallback(
     (payload: AppStatePayload) => {
       persist((prev) => {
-        const eventCategories = mergeEventCategories(payload.eventCategories ?? prev.eventCategories);
+        const localPayload: AppStatePayload = {
+          events: normalizeCalendarEvents(prev.events),
+          planItems: prev.planItems,
+          expenses: prev.expenses,
+          keyDates: prev.keyDates ?? [],
+          planSubcategories: prev.planSubcategories,
+          eventCategories: prev.eventCategories,
+          weeklyGoals: prev.weeklyGoals,
+          crossedOffDates: prev.crossedOffDates ?? [],
+          cycleData: prev.cycleData,
+          updatedAt: syncMetaRef.current.lastLocalChangeAt,
+        };
+        const merged = mergeAppStatePayload(localPayload, payload);
+        const eventCategories = mergeEventCategories(merged.eventCategories ?? prev.eventCategories);
         const next = {
           ...prev,
-          events: normalizeCalendarEvents(payload.events),
-          planItems: payload.planItems,
-          expenses: pruneOldSettledExpenses(payload.expenses),
-          keyDates: payload.keyDates ?? [],
-          planSubcategories: mergePlanSubcategories(payload.planSubcategories ?? prev.planSubcategories),
+          events: normalizeCalendarEvents(merged.events),
+          planItems: merged.planItems,
+          expenses: pruneOldSettledExpenses(merged.expenses),
+          keyDates: merged.keyDates ?? [],
+          planSubcategories: mergePlanSubcategories(merged.planSubcategories ?? prev.planSubcategories),
           eventCategories,
           weeklyGoals: syncWeeklyGoals(eventCategories, {
             ...DEFAULT_WEEKLY_GOALS,
-            ...payload.weeklyGoals,
+            ...merged.weeklyGoals,
           }),
-          crossedOffDates: payload.crossedOffDates ?? prev.crossedOffDates ?? [],
+          crossedOffDates: merged.crossedOffDates ?? prev.crossedOffDates ?? [],
+          cycleData: mergeCycleData(normalizeCycleData(prev.cycleData), merged.cycleData),
         };
         if (!hasSyncableChange(prev, next)) {
           return prev;
@@ -604,19 +653,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const getAppStatePayload = useCallback((): AppStatePayload => {
-    const eventCategories = mergeEventCategories(data.eventCategories);
+    const snapshot = dataRef.current;
+    const eventCategories = mergeEventCategories(snapshot.eventCategories);
     return {
-      events: normalizeCalendarEvents(data.events),
-      planItems: data.planItems,
-      expenses: data.expenses,
-      keyDates: data.keyDates,
-      planSubcategories: mergePlanSubcategories(data.planSubcategories),
+      events: normalizeCalendarEvents(snapshot.events),
+      planItems: snapshot.planItems,
+      expenses: snapshot.expenses,
+      keyDates: snapshot.keyDates,
+      planSubcategories: mergePlanSubcategories(snapshot.planSubcategories),
       eventCategories,
-      weeklyGoals: syncWeeklyGoals(eventCategories, data.weeklyGoals),
-      crossedOffDates: data.crossedOffDates ?? [],
+      weeklyGoals: syncWeeklyGoals(eventCategories, snapshot.weeklyGoals),
+      crossedOffDates: snapshot.crossedOffDates ?? [],
+      cycleData: normalizeCycleData(snapshot.cycleData),
       updatedAt: syncMetaRef.current.lastLocalChangeAt,
     };
-  }, [data]);
+  }, []);
+
+  const registerAppStatePushScheduler = useCallback((scheduler: (() => void) | null) => {
+    pushSchedulerRef.current = scheduler;
+  }, []);
 
   const touchAppStateChange = useCallback(() => {
     bumpLocalChange();
@@ -639,7 +694,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ...syncMetaRef.current,
       syncUserId: uid,
       syncCoupleId: coupleId,
-      lastLocalChangeAt: new Date(0).toISOString(),
     };
     syncMetaRef.current = next;
     setSyncMeta(next);
@@ -1003,6 +1057,132 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const crossedOffDates = data.crossedOffDates ?? [];
+  const cycleData = useMemo(() => normalizeCycleData(data.cycleData), [data.cycleData]);
+
+  const getCycleProfile = useCallback(
+    (owner: CycleOwner) => getOwnerProfile(cycleData, owner),
+    [cycleData]
+  );
+
+  const canViewCycleProfile = useCallback(
+    (owner: CycleOwner, mySlot?: 1 | 2 | null) => {
+      const viewer = cycleOwnerFromSlot(mySlot);
+      if (viewer === owner) return true;
+      return getOwnerProfile(cycleData, owner).settings.shareWithPartner === true;
+    },
+    [cycleData]
+  );
+
+  const updateCycleSettings = useCallback(
+    (owner: CycleOwner, patch: Partial<CycleSettings>) => {
+      persist((prev) => ({
+        ...prev,
+        cycleData: patchCycleSettings(prev.cycleData, owner, patch),
+      }));
+    },
+    [persist]
+  );
+
+  const setCycleLog = useCallback(
+    (owner: CycleOwner, date: string, kind: CycleLogKind, value: string, notes?: string) => {
+      persist((prev) => {
+        const base = normalizeCycleData(prev.cycleData);
+        const profile = base[owner];
+        const nextProfile = applyCycleLogUpdate(profile, date, kind, value, notes, generateId);
+        return {
+          ...prev,
+          cycleData: { ...base, [owner]: nextProfile },
+        };
+      });
+    },
+    [persist]
+  );
+
+  const addCustomCycleLog = useCallback(
+    (owner: CycleOwner, date: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      persist((prev) => {
+        const base = normalizeCycleData(prev.cycleData);
+        const profile = base[owner];
+        const now = new Date().toISOString();
+        return {
+          ...prev,
+          cycleData: {
+            ...base,
+            [owner]: {
+              ...profile,
+              logs: [
+                ...profile.logs,
+                {
+                  id: generateId(),
+                  date,
+                  kind: 'other' as const,
+                  value: 'custom',
+                  notes: trimmed,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              ],
+              updatedAt: now,
+            },
+          },
+        };
+      });
+    },
+    [persist]
+  );
+
+  const removeCycleLog = useCallback(
+    (owner: CycleOwner, logId: string) => {
+      persist((prev) => {
+        const base = normalizeCycleData(prev.cycleData);
+        const profile = base[owner];
+        return {
+          ...prev,
+          cycleData: {
+            ...base,
+            [owner]: {
+              ...profile,
+              logs: profile.logs.filter((l) => l.id !== logId),
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        };
+      });
+    },
+    [persist]
+  );
+
+  const markPeriodStart = useCallback(
+    (owner: CycleOwner, date: string) => {
+      persist((prev) => {
+        let next = patchCycleSettings(prev.cycleData, owner, { lastPeriodStart: date });
+        const base = normalizeCycleData(next);
+        const profile = base[owner];
+        const now = new Date().toISOString();
+        const logs = [
+          ...profile.logs.filter((l) => !(l.date === date && l.kind === 'period')),
+          {
+            id: generateId(),
+            date,
+            kind: 'period' as const,
+            value: 'medium',
+            createdAt: now,
+            updatedAt: now,
+          },
+        ];
+        return {
+          ...prev,
+          cycleData: {
+            ...base,
+            [owner]: { ...profile, logs, updatedAt: now },
+          },
+        };
+      });
+    },
+    [persist]
+  );
 
   const toggleCrossOffDate = useCallback(
     (date: string) => {
@@ -1058,6 +1238,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       replaceAppStateFromRemote,
       getAppStatePayload,
       touchAppStateChange,
+      registerAppStatePushScheduler,
       getSyncMeta,
       setLastAppliedRemoteAt,
       resetSyncScope,
@@ -1082,6 +1263,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       crossedOffDates,
       toggleCrossOffDate,
       isDateCrossedOff,
+      cycleData,
+      getCycleProfile,
+      canViewCycleProfile,
+      updateCycleSettings,
+      setCycleLog,
+      addCustomCycleLog,
+      removeCycleLog,
+      markPeriodStart,
     }),
     [
       data,
@@ -1112,6 +1301,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       replaceAppStateFromRemote,
       getAppStatePayload,
       touchAppStateChange,
+      registerAppStatePushScheduler,
       getSyncMeta,
       setLastAppliedRemoteAt,
       resetSyncScope,
@@ -1136,6 +1326,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       crossedOffDates,
       toggleCrossOffDate,
       isDateCrossedOff,
+      cycleData,
+      getCycleProfile,
+      canViewCycleProfile,
+      updateCycleSettings,
+      setCycleLog,
+      addCustomCycleLog,
+      removeCycleLog,
+      markPeriodStart,
     ]
   );
 

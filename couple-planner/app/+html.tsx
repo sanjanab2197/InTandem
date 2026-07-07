@@ -37,8 +37,14 @@ body {
     background-color: #000;
   }
 }
+[data-timeline-scroll="true"] {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(135, 112, 198, 0.45) transparent;
+}
 [data-timeline-scroll="true"]::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+  width: 6px;
+}
+[data-timeline-scroll="true"]::-webkit-scrollbar-thumb {
+  background-color: rgba(135, 112, 198, 0.45);
+  border-radius: 999px;
 }`;

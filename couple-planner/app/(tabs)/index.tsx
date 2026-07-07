@@ -1,20 +1,26 @@
 import { useNavigation } from 'expo-router';
 import { useLayoutEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import CalendarGrid from '@/components/CalendarGrid';
+import CycleCalendarPanel from '@/components/CycleCalendarPanel';
+import CycleDaySheet from '@/components/CycleDaySheet';
+import CyclePeriodEditSheet from '@/components/CyclePeriodEditSheet';
 import EventCategoryManager from '@/components/EventCategoryManager';
 import EventDetailModal from '@/components/EventDetailModal';
+import ScheduleModeMenu, { ScheduleViewMode } from '@/components/ScheduleModeMenu';
 import { Fonts, screenHeaderStyles } from '@/constants/Typography';
 import { Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
+import { useCouple } from '@/context/CoupleContext';
+import { CycleOwner } from '@/types';
+import { cycleOwnerFromSlot } from '@/utils/cycleTracking';
 
 export default function CalendarScreen() {
   const {
     events,
     loading,
     eventCategories,
-    getEventsForDate,
     addEvent,
     updateEvent,
     deleteEvent,
@@ -27,19 +33,55 @@ export default function CalendarScreen() {
     crossedOffDates,
     toggleCrossOffDate,
   } = useApp();
+  const { couple } = useCouple();
+
+  const [viewMode, setViewMode] = useState<ScheduleViewMode>('schedule');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [scheduleDayOpen, setScheduleDayOpen] = useState(false);
+  const [cycleDayOpen, setCycleDayOpen] = useState(false);
+  const [cyclePeriodEditOpen, setCyclePeriodEditOpen] = useState(false);
+  const [cycleDayOwner, setCycleDayOwner] = useState<CycleOwner>('partner1');
   const [manageCategories, setManageCategories] = useState(false);
   const navigation = useNavigation();
-  const inDayView = modalVisible && !!selectedDate;
+
+  const myOwner = cycleOwnerFromSlot(couple?.mySlot);
+  const inDayView =
+    viewMode === 'schedule'
+      ? scheduleDayOpen && !!selectedDate
+      : (cycleDayOpen || cyclePeriodEditOpen) && !!selectedDate;
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: !inDayView });
   }, [navigation, inDayView]);
 
-  const handleDayPress = (date: string) => {
+  const handleScheduleDayPress = (date: string) => {
     setSelectedDate(date);
-    setModalVisible(true);
+    setScheduleDayOpen(true);
+  };
+
+  const handleCycleDayPress = (date: string, owner: CycleOwner) => {
+    setSelectedDate(date);
+    setCycleDayOwner(owner);
+    setCycleDayOpen(true);
+  };
+
+  const handleCycleDayLongPress = (date: string, owner: CycleOwner) => {
+    setSelectedDate(date);
+    setCycleDayOwner(owner);
+    setCycleDayOpen(false);
+    setCyclePeriodEditOpen(true);
+  };
+
+  const closeDayView = () => {
+    setScheduleDayOpen(false);
+    setCycleDayOpen(false);
+    setCyclePeriodEditOpen(false);
+  };
+
+  const handleModeChange = (mode: ScheduleViewMode) => {
+    setViewMode(mode);
+    closeDayView();
+    setSelectedDate(null);
   };
 
   const handleSave = (event: Parameters<typeof addEvent>[0] & { id?: string }) => {
@@ -58,53 +100,104 @@ export default function CalendarScreen() {
     );
   }
 
+  if (viewMode === 'cycle' && cyclePeriodEditOpen && selectedDate) {
+    const readOnly = cycleDayOwner !== myOwner;
+    return (
+      <View style={styles.container}>
+        <View style={styles.dayViewRoot}>
+          <CyclePeriodEditSheet
+            date={selectedDate}
+            owner={cycleDayOwner}
+            readOnly={readOnly}
+            onClose={closeDayView}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  if (viewMode === 'cycle' && cycleDayOpen && selectedDate) {
+    const readOnly = cycleDayOwner !== myOwner;
+    return (
+      <View style={styles.container}>
+        <View style={styles.dayViewRoot}>
+          <CycleDaySheet
+            date={selectedDate}
+            owner={cycleDayOwner}
+            readOnly={readOnly}
+            onClose={closeDayView}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  if (viewMode === 'schedule' && scheduleDayOpen && selectedDate) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.dayViewRoot}>
+          <EventDetailModal
+            visible
+            date={selectedDate}
+            onClose={closeDayView}
+            onDateChange={setSelectedDate}
+            onSave={handleSave}
+            onDelete={deleteEvent}
+          />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      {modalVisible && selectedDate ? (
-        <EventDetailModal
-          visible
-          date={selectedDate}
-          onClose={() => setModalVisible(false)}
-          onDateChange={setSelectedDate}
-          onSave={handleSave}
-          onDelete={deleteEvent}
-        />
-      ) : (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Pressable
-            style={({ pressed }) => [styles.editCategories, pressed && styles.editCategoriesPressed]}
-            onPress={() => setManageCategories(true)}>
-            <View style={styles.editCategoriesBody}>
-              <Text style={styles.editCategoriesTitle}>Edit categories</Text>
-              <Text style={styles.editCategoriesDesc}>
-                Customize event types and labels on your calendar
-              </Text>
-            </View>
-            <Text style={styles.editCategoriesArrow}>›</Text>
-          </Pressable>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScheduleModeMenu mode={viewMode} onModeChange={handleModeChange} />
 
-          <CalendarGrid
-            events={events}
-            onDayPress={handleDayPress}
-            onDayLongPress={toggleCrossOffDate}
-            selectedDate={selectedDate ?? undefined}
-            crossedOffDates={crossedOffDates}
-          />
-
-          <Text style={[screenHeaderStyles.hint, screenHeaderStyles.hintOnly, styles.calendarHint]}>
-            Tap a date for day view · Long-press a time to add an event · Long-press a day to cross off
-          </Text>
-
-          <View style={styles.legend}>
-            {eventCategories.map((cat) => (
-              <View key={cat.key} style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: cat.color }]} />
-                <Text style={styles.legendLabel}>{cat.label}</Text>
+        {viewMode === 'schedule' ? (
+          <>
+            <Pressable
+              style={({ pressed }) => [styles.editCategories, pressed && styles.editCategoriesPressed]}
+              onPress={() => setManageCategories(true)}>
+              <View style={styles.editCategoriesBody}>
+                <Text style={styles.editCategoriesTitle}>Edit categories</Text>
+                <Text style={styles.editCategoriesDesc}>
+                  Customize event types and labels on your calendar
+                </Text>
               </View>
-            ))}
-          </View>
-        </ScrollView>
-      )}
+              <Text style={styles.editCategoriesArrow}>›</Text>
+            </Pressable>
+
+            <CalendarGrid
+              events={events}
+              onDayPress={handleScheduleDayPress}
+              onDayLongPress={toggleCrossOffDate}
+              selectedDate={selectedDate ?? undefined}
+              crossedOffDates={crossedOffDates}
+              variant="schedule"
+            />
+
+            <Text style={[screenHeaderStyles.hint, screenHeaderStyles.hintOnly, styles.calendarHint]}>
+              Tap a date for day view · Long-press a time to add an event · Long-press a day to cross off
+            </Text>
+
+            <View style={styles.legend}>
+              {eventCategories.map((cat) => (
+                <View key={cat.key} style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: cat.color }]} />
+                  <Text style={styles.legendLabel}>{cat.label}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : (
+          <CycleCalendarPanel
+            selectedDate={selectedDate ?? undefined}
+            onDayPress={handleCycleDayPress}
+            onDayLongPress={handleCycleDayLongPress}
+          />
+        )}
+      </ScrollView>
 
       <EventCategoryManager
         visible={manageCategories}
@@ -123,6 +216,7 @@ export default function CalendarScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, minHeight: 0, backgroundColor: Theme.background },
+  dayViewRoot: { flex: 1, minHeight: 0, ...(Platform.OS === 'web' ? { height: '100%' as const } : {}) },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.background },
   scroll: { padding: 20, paddingBottom: 40 },
   calendarHint: { marginTop: 12 },
@@ -139,7 +233,7 @@ const styles = StyleSheet.create({
   },
   editCategoriesPressed: {
     backgroundColor: Theme.primaryLight,
-    borderColor: 'rgba(139, 111, 212, 0.25)',
+    borderColor: 'rgba(135, 112, 198, 0.25)',
   },
   editCategoriesBody: {
     flex: 1,

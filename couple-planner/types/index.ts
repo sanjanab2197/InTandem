@@ -76,6 +76,63 @@ export interface AddKeyDateInput {
 
 export type StatsView = 'partner1' | 'partner2';
 
+export type CycleOwner = 'partner1' | 'partner2';
+
+export type FlowLevel = 'none' | 'spotting' | 'light' | 'medium' | 'heavy';
+
+export type CycleLogKind =
+  | 'period'
+  | 'sex'
+  | 'pill'
+  | 'discharge'
+  | 'digestion'
+  | 'stool'
+  | 'mood'
+  | 'symptom'
+  | 'travel'
+  | 'sleep'
+  | 'energy'
+  | 'skin'
+  | 'other';
+
+export interface CycleLogEntry {
+  id: string;
+  date: string;
+  kind: CycleLogKind;
+  value: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CycleSettings {
+  averageCycleLength: number;
+  averagePeriodLength: number;
+  lastPeriodStart?: string;
+  shareWithPartner: boolean;
+}
+
+export interface CycleProfile {
+  settings: CycleSettings;
+  logs: CycleLogEntry[];
+  updatedAt?: string;
+}
+
+export interface CycleData {
+  partner1: CycleProfile;
+  partner2: CycleProfile;
+}
+
+export type CycleDayPhase = 'period' | 'predicted_period' | 'fertile' | 'ovulation';
+
+export interface CycleCalendarMarker {
+  phase?: CycleDayPhase;
+  hasLogs?: boolean;
+  flow?: FlowLevel;
+  logKinds?: CycleLogKind[];
+  logCount?: number;
+}
+
 export type DayViewFilterKey = 'partner1' | 'partner2' | 'together';
 
 export type DayViewFilters = Record<DayViewFilterKey, boolean>;
@@ -177,6 +234,7 @@ export interface AppData {
   profile: CoupleProfile;
   weeklyGoals: CategoryGoals;
   crossedOffDates?: string[];
+  cycleData?: CycleData;
 }
 
 /** Syncable app data stored in Supabase (excludes profile + reminders). */
@@ -189,5 +247,6 @@ export interface AppStatePayload {
   eventCategories?: EventCategoryConfig[];
   weeklyGoals: CategoryGoals;
   crossedOffDates?: string[];
+  cycleData?: CycleData;
   updatedAt?: string;
 }

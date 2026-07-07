@@ -467,6 +467,12 @@ alter table public.couple_app_state
 alter table public.user_app_state
   add column if not exists key_dates jsonb not null default '[]'::jsonb;
 
+alter table public.couple_app_state
+  add column if not exists cycle_data jsonb;
+
+alter table public.user_app_state
+  add column if not exists cycle_data jsonb;
+
 -- ============================================================
 -- 9. Shared reminders
 -- ============================================================
