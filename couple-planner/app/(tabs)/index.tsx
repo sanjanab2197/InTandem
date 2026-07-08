@@ -5,10 +5,11 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, V
 import CalendarGrid from '@/components/CalendarGrid';
 import CycleCalendarPanel from '@/components/CycleCalendarPanel';
 import CycleDaySheet from '@/components/CycleDaySheet';
-import CyclePeriodEditSheet from '@/components/CyclePeriodEditSheet';
+import CycleSaveBanner from '@/components/CycleSaveBanner';
 import EventCategoryManager from '@/components/EventCategoryManager';
 import EventDetailModal from '@/components/EventDetailModal';
-import ScheduleModeMenu, { ScheduleViewMode } from '@/components/ScheduleModeMenu';
+import ScheduleCycleToggle from '@/components/ScheduleModeMenu';
+import { useCycleCalendarView } from '@/components/useCycleCalendarView';
 import { Fonts, screenHeaderStyles } from '@/constants/Typography';
 import { Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
@@ -32,23 +33,23 @@ export default function CalendarScreen() {
     deleteEventSubcategory,
     crossedOffDates,
     toggleCrossOffDate,
+    cycleSaveStatus,
   } = useApp();
   const { couple } = useCouple();
 
-  const [viewMode, setViewMode] = useState<ScheduleViewMode>('schedule');
+  const [showCycleHealth, setShowCycleHealth] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [scheduleDayOpen, setScheduleDayOpen] = useState(false);
   const [cycleDayOpen, setCycleDayOpen] = useState(false);
-  const [cyclePeriodEditOpen, setCyclePeriodEditOpen] = useState(false);
   const [cycleDayOwner, setCycleDayOwner] = useState<CycleOwner>('partner1');
   const [manageCategories, setManageCategories] = useState(false);
   const navigation = useNavigation();
 
+  const cycleView = useCycleCalendarView(selectedDate ?? undefined);
   const myOwner = cycleOwnerFromSlot(couple?.mySlot);
-  const inDayView =
-    viewMode === 'schedule'
-      ? scheduleDayOpen && !!selectedDate
-      : (cycleDayOpen || cyclePeriodEditOpen) && !!selectedDate;
+  const inDayView = showCycleHealth
+    ? cycleDayOpen && !!selectedDate
+    : scheduleDayOpen && !!selectedDate;
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: !inDayView });
@@ -59,27 +60,24 @@ export default function CalendarScreen() {
     setScheduleDayOpen(true);
   };
 
-  const handleCycleDayPress = (date: string, owner: CycleOwner) => {
+  const handleCycleDayPress = (date: string) => {
     setSelectedDate(date);
-    setCycleDayOwner(owner);
-    setCycleDayOpen(true);
+    setCycleDayOwner(cycleView.activeOwner);
   };
 
-  const handleCycleDayLongPress = (date: string, owner: CycleOwner) => {
+  const handleCycleDayLongPress = (date: string) => {
     setSelectedDate(date);
-    setCycleDayOwner(owner);
-    setCycleDayOpen(false);
-    setCyclePeriodEditOpen(true);
+    setCycleDayOwner(cycleView.activeOwner);
+    setCycleDayOpen(true);
   };
 
   const closeDayView = () => {
     setScheduleDayOpen(false);
     setCycleDayOpen(false);
-    setCyclePeriodEditOpen(false);
   };
 
-  const handleModeChange = (mode: ScheduleViewMode) => {
-    setViewMode(mode);
+  const handleToggleCycle = (enabled: boolean) => {
+    setShowCycleHealth(enabled);
     closeDayView();
     setSelectedDate(null);
   };
@@ -100,23 +98,7 @@ export default function CalendarScreen() {
     );
   }
 
-  if (viewMode === 'cycle' && cyclePeriodEditOpen && selectedDate) {
-    const readOnly = cycleDayOwner !== myOwner;
-    return (
-      <View style={styles.container}>
-        <View style={styles.dayViewRoot}>
-          <CyclePeriodEditSheet
-            date={selectedDate}
-            owner={cycleDayOwner}
-            readOnly={readOnly}
-            onClose={closeDayView}
-          />
-        </View>
-      </View>
-    );
-  }
-
-  if (viewMode === 'cycle' && cycleDayOpen && selectedDate) {
+  if (showCycleHealth && cycleDayOpen && selectedDate) {
     const readOnly = cycleDayOwner !== myOwner;
     return (
       <View style={styles.container}>
@@ -126,13 +108,15 @@ export default function CalendarScreen() {
             owner={cycleDayOwner}
             readOnly={readOnly}
             onClose={closeDayView}
+            onDateChange={setSelectedDate}
           />
         </View>
+        {cycleSaveStatus !== 'idle' ? <CycleSaveBanner status={cycleSaveStatus} /> : null}
       </View>
     );
   }
 
-  if (viewMode === 'schedule' && scheduleDayOpen && selectedDate) {
+  if (!showCycleHealth && scheduleDayOpen && selectedDate) {
     return (
       <View style={styles.container}>
         <View style={styles.dayViewRoot}>
@@ -152,31 +136,40 @@ export default function CalendarScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <ScheduleModeMenu mode={viewMode} onModeChange={handleModeChange} />
+        <ScheduleCycleToggle enabled={showCycleHealth} onEnabledChange={handleToggleCycle} />
 
-        {viewMode === 'schedule' ? (
+        {showCycleHealth ? (
+          <CycleCalendarPanel cycle={cycleView} placement="header" />
+        ) : (
+          <Pressable
+            style={({ pressed }) => [styles.editCategories, pressed && styles.editCategoriesPressed]}
+            onPress={() => setManageCategories(true)}>
+            <View style={styles.editCategoriesBody}>
+              <Text style={styles.editCategoriesTitle}>Edit categories</Text>
+              <Text style={styles.editCategoriesDesc}>
+                Customize event types and labels on your calendar
+              </Text>
+            </View>
+            <Text style={styles.editCategoriesArrow}>›</Text>
+          </Pressable>
+        )}
+
+        <CalendarGrid
+          events={showCycleHealth ? [] : events}
+          variant={showCycleHealth ? 'cycle' : 'schedule'}
+          cycleMarkers={showCycleHealth ? cycleView.cycleMarkers : undefined}
+          selectedDate={selectedDate ?? undefined}
+          visibleMonth={showCycleHealth ? cycleView.visibleMonth : undefined}
+          onVisibleMonthChange={showCycleHealth ? cycleView.setVisibleMonth : undefined}
+          crossedOffDates={showCycleHealth ? undefined : crossedOffDates}
+          onDayPress={showCycleHealth ? handleCycleDayPress : handleScheduleDayPress}
+          onDayLongPress={showCycleHealth ? handleCycleDayLongPress : toggleCrossOffDate}
+        />
+
+        {showCycleHealth ? (
+          <CycleCalendarPanel cycle={cycleView} placement="footer" />
+        ) : (
           <>
-            <Pressable
-              style={({ pressed }) => [styles.editCategories, pressed && styles.editCategoriesPressed]}
-              onPress={() => setManageCategories(true)}>
-              <View style={styles.editCategoriesBody}>
-                <Text style={styles.editCategoriesTitle}>Edit categories</Text>
-                <Text style={styles.editCategoriesDesc}>
-                  Customize event types and labels on your calendar
-                </Text>
-              </View>
-              <Text style={styles.editCategoriesArrow}>›</Text>
-            </Pressable>
-
-            <CalendarGrid
-              events={events}
-              onDayPress={handleScheduleDayPress}
-              onDayLongPress={toggleCrossOffDate}
-              selectedDate={selectedDate ?? undefined}
-              crossedOffDates={crossedOffDates}
-              variant="schedule"
-            />
-
             <Text style={[screenHeaderStyles.hint, screenHeaderStyles.hintOnly, styles.calendarHint]}>
               Tap a date for day view · Long-press a time to add an event · Long-press a day to cross off
             </Text>
@@ -190,12 +183,6 @@ export default function CalendarScreen() {
               ))}
             </View>
           </>
-        ) : (
-          <CycleCalendarPanel
-            selectedDate={selectedDate ?? undefined}
-            onDayPress={handleCycleDayPress}
-            onDayLongPress={handleCycleDayLongPress}
-          />
         )}
       </ScrollView>
 
@@ -210,6 +197,10 @@ export default function CalendarScreen() {
         onUpdateSubcategory={updateEventSubcategory}
         onDeleteSubcategory={deleteEventSubcategory}
       />
+
+      {showCycleHealth && cycleSaveStatus !== 'idle' ? (
+        <CycleSaveBanner status={cycleSaveStatus} />
+      ) : null}
     </View>
   );
 }

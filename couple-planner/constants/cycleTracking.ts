@@ -1,4 +1,5 @@
-import { CycleLogKind, FlowLevel } from '@/types';
+import { CycleLogKind } from '@/types';
+import { isPeriodLogged } from '@/types';
 
 export const CYCLE_THEME = {
   period: '#D96282',
@@ -30,31 +31,16 @@ export function cycleLogKindColor(kind: CycleLogKind): string {
   }
 }
 
-export function flowDotSize(flow: FlowLevel): number {
-  switch (flow) {
-    case 'heavy':
-      return 7;
-    case 'medium':
-      return 6;
-    case 'light':
-      return 5;
-    case 'spotting':
-      return 4;
-    default:
-      return 0;
-  }
-}
-
 export const DEFAULT_CYCLE_LENGTH = 28;
 export const DEFAULT_PERIOD_LENGTH = 5;
-
-export const FLOW_OPTIONS: { key: FlowLevel; label: string }[] = [
-  { key: 'none', label: 'None' },
-  { key: 'spotting', label: 'Spotting' },
-  { key: 'light', label: 'Light' },
-  { key: 'medium', label: 'Medium' },
-  { key: 'heavy', label: 'Heavy' },
-];
+/** Gap (days) without period logs before the next log starts a new period (Flo-style). */
+export const PERIOD_CYCLE_GAP_DAYS = 15;
+/** Standard luteal phase — ovulation is this many days before next period. */
+export const LUTEAL_PHASE_DAYS = 14;
+/** Fertile window: days before ovulation (sperm survival). */
+export const FERTILE_DAYS_BEFORE_OVULATION = 5;
+/** Fertile window: days after ovulation (egg survival). */
+export const FERTILE_DAYS_AFTER_OVULATION = 1;
 
 export const LOG_SECTIONS: {
   kind: CycleLogKind;
@@ -211,9 +197,7 @@ export function logKindLabel(kind: CycleLogKind): string {
 
 export function logValueLabel(kind: CycleLogKind, value: string, notes?: string): string {
   if (kind === 'other') return notes?.trim() || value || 'Other';
-  if (kind === 'period') {
-    return FLOW_OPTIONS.find((f) => f.key === value)?.label ?? value;
-  }
+  if (kind === 'period') return isPeriodLogged(value) ? 'On period' : 'Not on period';
   const section = LOG_SECTIONS.find((s) => s.kind === kind);
   return section?.options.find((o) => o.key === value)?.label ?? value;
 }

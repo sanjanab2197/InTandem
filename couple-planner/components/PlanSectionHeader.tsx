@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import PlanCategoryIcon from '@/components/PlanCategoryIcon';
-import { PlanCategoryTheme, PlansUI } from '@/constants/plansTheme';
+import { PlanCategoryTheme } from '@/constants/plansTheme';
 import { Fonts } from '@/constants/Typography';
 import { Theme } from '@/constants/Theme';
 import { PlanCategory } from '@/types';
@@ -11,14 +11,10 @@ interface PlanSectionHeaderProps {
   category: PlanCategory;
   theme: PlanCategoryTheme;
   title: string;
-  hint: string;
+  hint?: string;
   onBack?: () => void;
   backLabel?: string;
   footer?: ReactNode;
-}
-
-function backLabelText(label: string) {
-  return label.replace(/^←\s*/, '').trim();
 }
 
 export default function PlanSectionHeader({
@@ -27,117 +23,92 @@ export default function PlanSectionHeader({
   title,
   hint,
   onBack,
-  backLabel = '← Organizer',
+  backLabel = 'Organizer',
   footer,
 }: PlanSectionHeaderProps) {
-  const backText = backLabelText(backLabel);
-
   return (
-    <View
-      style={[
-        styles.card,
-        PlansUI.cardShadow,
-        { backgroundColor: theme.accentMuted, borderColor: theme.accentLight },
-      ]}>
-      {onBack ? (
-        <Pressable
-          style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
-          onPress={onBack}
-          hitSlop={8}>
-          <Text style={[styles.backChevron, { color: theme.accent }]}>‹</Text>
-          <Text style={[styles.backText, { color: theme.accent }]}>{backText}</Text>
-        </Pressable>
-      ) : null}
-
-      <View style={styles.iconArea}>
-        <View style={[styles.iconGlow, { backgroundColor: theme.accentLight }]} />
-        <View style={[styles.iconWrap, { backgroundColor: theme.accentLight }]}>
-          <PlanCategoryIcon category={category} color={theme.accentDark} size={26} />
+    <View style={[styles.wrap, { borderColor: theme.accentLight, backgroundColor: theme.accentMuted }]}>
+      <View style={styles.topRow}>
+        {onBack ? (
+          <Pressable
+            style={({ pressed }) => [styles.backPill, pressed && styles.backPillPressed]}
+            onPress={onBack}
+            hitSlop={6}>
+            <Text style={[styles.backChevron, { color: theme.accent }]}>‹</Text>
+            <Text style={[styles.backText, { color: theme.accent }]}>{backLabel}</Text>
+          </Pressable>
+        ) : (
+          <View />
+        )}
+        <View style={[styles.iconChip, { backgroundColor: theme.accentLight }]}>
+          <PlanCategoryIcon category={category} color={theme.accentDark} size={18} />
         </View>
       </View>
 
       <Text style={[styles.title, { color: theme.accentDark }]}>{title}</Text>
-      <Text style={styles.hint}>{hint}</Text>
-
+      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       {footer ? <View style={[styles.footer, { borderTopColor: theme.accentLight }]}>{footer}</View> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 18,
+  wrap: {
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 18,
-    marginBottom: 16,
+    padding: 14,
+    marginBottom: 14,
   },
-  backBtn: {
-    alignSelf: 'flex-start',
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 14,
-    marginLeft: -2,
-    paddingVertical: 2,
-    paddingRight: 8,
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
-  backBtnPressed: {
-    opacity: 0.65,
+  backPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.55)',
   },
+  backPillPressed: { opacity: 0.7 },
   backChevron: {
-    fontSize: 22,
+    fontSize: 18,
     fontFamily: Fonts.semiBold,
-    fontWeight: '600',
-    lineHeight: 22,
+    lineHeight: 18,
     marginRight: 2,
     marginTop: -1,
   },
   backText: {
     fontSize: 13,
     fontFamily: Fonts.semiBold,
-    fontWeight: '600',
-    letterSpacing: 0.2,
   },
-  iconArea: {
-    alignSelf: 'flex-start',
-    marginBottom: 14,
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconGlow: {
-    position: 'absolute',
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    opacity: 0.55,
-  },
-  iconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
+  iconChip: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
-    fontSize: 32,
+    fontSize: 24,
     fontFamily: Fonts.display,
     fontWeight: '800',
-    letterSpacing: -1.1,
-    lineHeight: 36,
-    marginBottom: 8,
+    letterSpacing: -0.6,
+    lineHeight: 28,
+    marginBottom: 6,
   },
   hint: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: Fonts.regular,
     color: Theme.textSecondary,
-    lineHeight: 19,
-    letterSpacing: 0.1,
-    maxWidth: '92%',
+    lineHeight: 17,
   },
   footer: {
-    marginTop: 16,
-    paddingTop: 14,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
 });

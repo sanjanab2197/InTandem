@@ -1,7 +1,7 @@
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns';
 
-import { DEFAULT_CYCLE_LENGTH, DEFAULT_PERIOD_LENGTH } from '@/constants/cycleTracking';
-import { CycleCalendarMarker, CycleDayPhase, CycleLogEntry, CycleProfile, FlowLevel } from '@/types';
+import { DEFAULT_CYCLE_LENGTH, DEFAULT_PERIOD_LENGTH, PERIOD_CYCLE_GAP_DAYS } from '@/constants/cycleTracking';
+import { CycleCalendarMarker, CycleDayPhase, CycleLogEntry, CycleProfile, isPeriodLogged } from '@/types';
 
 function dateKey(d: Date): string {
   return format(d, 'yyyy-MM-dd');
@@ -11,28 +11,71 @@ function parseDate(dateStr: string): Date {
   return parseISO(dateStr);
 }
 
-/** First day of each logged bleeding episode (gap > 1 day between flow logs). */
-export function inferPeriodStarts(profile: CycleProfile): string[] {
-  const periodDates = profile.logs
-    .filter((l) => l.kind === 'period' && l.value && l.value !== 'none')
+/** Flo-style: one period per cluster; sparse logged days in between still belong to the same period. */
+export function inferPeriodEpisodes(profile: CycleProfile): string[][] {
+  const dates = profile.logs
+    .filter((l) => l.kind === 'period' && isPeriodLogged(l.value))
     .map((l) => l.date)
     .sort();
 
-  const starts: string[] = [];
-  for (let i = 0; i < periodDates.length; i += 1) {
-    if (i === 0) {
-      starts.push(periodDates[0]);
+  const episodes: string[][] = [];
+  let current: string[] = [];
+
+  for (const d of dates) {
+    if (current.length === 0) {
+      current = [d];
       continue;
     }
-    const gap = differenceInCalendarDays(parseDate(periodDates[i]), parseDate(periodDates[i - 1]));
-    if (gap > 1) starts.push(periodDates[i]);
+    const gap = differenceInCalendarDays(parseDate(d), parseDate(current[current.length - 1]));
+    if (gap > PERIOD_CYCLE_GAP_DAYS) {
+      episodes.push(current);
+      current = [d];
+    } else {
+      current.push(d);
+    }
   }
+  if (current.length > 0) episodes.push(current);
+  return episodes;
+}
 
-  if (profile.settings.lastPeriodStart && !starts.includes(profile.settings.lastPeriodStart)) {
-    starts.push(profile.settings.lastPeriodStart);
+/** Calendar span from first to last logged day in a period cluster. */
+export function inferPeriodEpisodeSpan(episode: string[]): number {
+  if (episode.length === 0) return 0;
+  if (episode.length === 1) return 1;
+  return differenceInCalendarDays(parseDate(episode[episode.length - 1]), parseDate(episode[0])) + 1;
+}
+
+export function inferLatestPeriodEpisode(profile: CycleProfile): string[] | undefined {
+  const episodes = inferPeriodEpisodes(profile);
+  if (episodes.length === 0) return undefined;
+  return episodes[episodes.length - 1];
+}
+
+/** Learned period length from first→last logged day per period (Flo-style). */
+export function inferTypicalPeriodLength(profile: CycleProfile): number {
+  const episodes = inferPeriodEpisodes(profile);
+  if (episodes.length === 0) {
+    return profile.settings.averagePeriodLength || DEFAULT_PERIOD_LENGTH;
   }
+  const spans = episodes.map(inferPeriodEpisodeSpan);
+  const recent = spans.slice(-3);
+  const avg = Math.round(recent.reduce((sum, n) => sum + n, 0) / recent.length);
+  return Math.min(Math.max(avg, 1), 14);
+}
 
-  return [...new Set(starts)].sort();
+/** First logged day of each period cluster. */
+export function inferPeriodStarts(profile: CycleProfile): string[] {
+  const starts = inferPeriodEpisodes(profile).map((episode) => episode[0]);
+  if (starts.length === 0 && profile.settings.lastPeriodStart) {
+    return [profile.settings.lastPeriodStart];
+  }
+  return starts;
+}
+
+export function inferLatestPeriodEpisodeStart(profile: CycleProfile): string | undefined {
+  const episodes = inferPeriodEpisodes(profile);
+  if (episodes.length === 0) return profile.settings.lastPeriodStart;
+  return episodes[episodes.length - 1][0];
 }
 
 export function inferLastPeriodStart(profile: CycleProfile): string | undefined {
@@ -60,7 +103,7 @@ export function inferCycleLength(profile: CycleProfile): InferredCycleLength {
     if (gap >= 21 && gap <= 45) gaps.push(gap);
   }
 
-  if (gaps.length >= 1) {
+  if (gaps.length >= 1 && profile.settings.useManualCycleLength !== true) {
     const recent = gaps.slice(-6);
     const avg = Math.round(recent.reduce((sum, g) => sum + g, 0) / recent.length);
     return { length: avg, source: 'learned', cyclesUsed: recent.length + 1 };
@@ -100,8 +143,9 @@ export function cycleLengthLabel(predictions: CyclePredictions): string {
 export function computeCyclePredictions(profile: CycleProfile): CyclePredictions {
   const { length: cycleLength, source: cycleLengthSource, cyclesUsed: cyclesUsedForLength } =
     inferCycleLength(profile);
-  const periodLength = profile.settings.averagePeriodLength || DEFAULT_PERIOD_LENGTH;
+  const periodLength = inferTypicalPeriodLength(profile);
   const lastPeriodStart = inferLastPeriodStart(profile);
+  const latestEpisode = inferLatestPeriodEpisode(profile);
 
   if (!lastPeriodStart) {
     return { cycleLength, cycleLengthSource, cyclesUsedForLength, periodLength };
@@ -121,6 +165,18 @@ export function computeCyclePredictions(profile: CycleProfile): CyclePredictions
   const fertileStart = dateKey(addDays(parseDate(ovulationDate), -5));
   const fertileEnd = dateKey(addDays(parseDate(ovulationDate), 1));
 
+  const latestSpan = latestEpisode ? inferPeriodEpisodeSpan(latestEpisode) : periodLength;
+  const lastLogged = latestEpisode?.[latestEpisode.length - 1];
+  const daysSinceLastLog =
+    lastLogged != null ? differenceInCalendarDays(today, parseDate(lastLogged)) : null;
+  const activePeriodLength =
+    latestEpisode &&
+    latestEpisode[0] === lastPeriodStart &&
+    daysSinceLastLog != null &&
+    daysSinceLastLog <= PERIOD_CYCLE_GAP_DAYS
+      ? latestSpan
+      : periodLength;
+
   return {
     lastPeriodStart: currentCycleStart,
     nextPeriodStart,
@@ -130,7 +186,7 @@ export function computeCyclePredictions(profile: CycleProfile): CyclePredictions
     cycleLength,
     cycleLengthSource,
     cyclesUsedForLength,
-    periodLength,
+    periodLength: activePeriodLength,
   };
 }
 
@@ -142,7 +198,7 @@ function isInRange(dateStr: string, start: string, end: string): boolean {
 function periodDaysFromLogs(logs: CycleLogEntry[]): Set<string> {
   const set = new Set<string>();
   for (const log of logs) {
-    if (log.kind === 'period' && log.value && log.value !== 'none') {
+    if (log.kind === 'period' && isPeriodLogged(log.value)) {
       set.add(log.date);
     }
   }
@@ -168,13 +224,6 @@ export function buildCycleCalendarMarkers(
 
     if (periodLogged.has(key)) {
       phase = 'period';
-    } else if (predictions.lastPeriodStart && predictions.periodLength) {
-      const periodEnd = dateKey(
-        addDays(parseDate(predictions.lastPeriodStart), predictions.periodLength - 1)
-      );
-      if (isInRange(key, predictions.lastPeriodStart, periodEnd)) {
-        phase = 'predicted_period';
-      }
     }
 
     if (!phase && predictions.nextPeriodStart && predictions.periodLength) {
@@ -200,17 +249,12 @@ export function buildCycleCalendarMarkers(
     }
 
     const dayLogs = profile.logs.filter((l) => l.date === key);
-    const flowLog = dayLogs.find((l) => l.kind === 'period');
-    const flowValue = flowLog?.value;
-    const flow =
-      flowValue && flowValue !== 'none' ? (flowValue as FlowLevel) : undefined;
     const logKinds = [...new Set(dayLogs.map((l) => l.kind))];
 
     if (phase || loggedDates.has(key) || dayLogs.length > 0) {
       markers[key] = {
         phase,
         hasLogs: dayLogs.length > 0,
-        flow,
         logKinds,
         logCount: dayLogs.length,
       };

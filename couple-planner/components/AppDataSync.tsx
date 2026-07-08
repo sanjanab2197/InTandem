@@ -18,23 +18,9 @@ function logSyncError(label: string, error: unknown) {
   console.warn(`[AppDataSync] ${label}:`, message);
 }
 
+/** Immediate cloud push — use after batch saves (e.g. AI travel generate). */
 export function useAppStateRemoteActions() {
-  const { user } = useAuth();
-  const { couple } = useCouple();
-  const { getAppStatePayload } = useApp();
-  const coupleId = couple?.connected ? couple.coupleId : undefined;
-  const userId = user?.id;
-
-  const pushAppStateNow = useCallback(async () => {
-    if (!userId) return;
-    const payload = getAppStatePayload();
-    if (coupleId) {
-      await upsertCoupleAppState(coupleId, userId, payload);
-    } else {
-      await upsertUserAppState(userId, payload);
-    }
-  }, [coupleId, userId, getAppStatePayload]);
-
+  const { pushAppStateNow } = useApp();
   return { pushAppStateNow };
 }
 
@@ -60,6 +46,7 @@ export default function AppDataSync() {
     resetScopeLocalFields,
     setRemoteSyncReady,
     registerAppStatePushScheduler,
+    registerAppStatePushNow,
   } = useApp();
 
   const coupleId = couple?.connected ? couple.coupleId : undefined;
@@ -106,6 +93,19 @@ export default function AppDataSync() {
         // Logged in pushToRemote; retry on next change.
       });
     }, PUSH_DEBOUNCE_MS);
+  }, [pushToRemote, userId]);
+
+  const pushNow = useCallback(async () => {
+    if (!userId) return;
+    if (pushTimerRef.current) {
+      clearTimeout(pushTimerRef.current);
+      pushTimerRef.current = null;
+    }
+    if (!pullCompletedRef.current) {
+      pendingPushRef.current = true;
+      return;
+    }
+    await pushToRemote();
   }, [pushToRemote, userId]);
 
   const pullRemote = useCallback(async () => {
@@ -197,8 +197,12 @@ export default function AppDataSync() {
 
   useEffect(() => {
     registerAppStatePushScheduler(schedulePush);
-    return () => registerAppStatePushScheduler(null);
-  }, [registerAppStatePushScheduler, schedulePush]);
+    registerAppStatePushNow(pushNow);
+    return () => {
+      registerAppStatePushScheduler(null);
+      registerAppStatePushNow(null);
+    };
+  }, [registerAppStatePushScheduler, registerAppStatePushNow, schedulePush, pushNow]);
 
   useEffect(() => {
     pullCompletedRef.current = false;

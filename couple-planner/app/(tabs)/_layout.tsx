@@ -4,9 +4,11 @@ import { Tabs } from 'expo-router';
 import AppHeaderBar from '@/components/AppHeaderBar';
 import { Fonts } from '@/constants/Typography';
 import { Theme } from '@/constants/Theme';
+import { OrganizerNavProvider } from '@/context/OrganizerNavContext';
 
 export default function TabLayout() {
   return (
+    <OrganizerNavProvider>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Theme.primary,
@@ -75,5 +77,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </OrganizerNavProvider>
   );
 }

@@ -127,6 +127,8 @@ function generateId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+export type CycleSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 interface AppContextValue {
   events: CalendarEvent[];
   planItems: PlanItem[];
@@ -163,6 +165,8 @@ interface AppContextValue {
   getAppStatePayload: () => AppStatePayload;
   touchAppStateChange: () => void;
   registerAppStatePushScheduler: (scheduler: (() => void) | null) => void;
+  registerAppStatePushNow: (pusher: (() => Promise<void>) | null) => void;
+  pushAppStateNow: () => Promise<void>;
   getSyncMeta: () => SyncMeta;
   setLastAppliedRemoteAt: (iso: string) => void;
   resetSyncScope: (userId: string, coupleId: string | null) => void;
@@ -188,6 +192,7 @@ interface AppContextValue {
   toggleCrossOffDate: (date: string) => void;
   isDateCrossedOff: (date: string) => boolean;
   cycleData: CycleData;
+  cycleSaveStatus: CycleSaveStatus;
   getCycleProfile: (owner: CycleOwner) => CycleProfile;
   canViewCycleProfile: (owner: CycleOwner, mySlot?: 1 | 2 | null) => boolean;
   updateCycleSettings: (owner: CycleOwner, patch: Partial<CycleSettings>) => void;
@@ -211,6 +216,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const dataRef = useRef<AppData>(DEFAULT_DATA);
   const persistEnabledRef = useRef(false);
   const pushSchedulerRef = useRef<(() => void) | null>(null);
+  const pushNowRef = useRef<(() => Promise<void>) | null>(null);
+  const cycleSyncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cycleSaveHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [cycleSaveStatus, setCycleSaveStatus] = useState<CycleSaveStatus>('idle');
   const loading = authLoading || !storageReady || (!!userId && !remoteSyncReady);
   userIdRef.current = userId;
 
@@ -673,6 +682,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     pushSchedulerRef.current = scheduler;
   }, []);
 
+  const registerAppStatePushNow = useCallback((pusher: (() => Promise<void>) | null) => {
+    pushNowRef.current = pusher;
+  }, []);
+
+  const pushAppStateNow = useCallback(async () => {
+    if (pushNowRef.current) {
+      await pushNowRef.current();
+      return;
+    }
+    pushSchedulerRef.current?.();
+  }, []);
+
+  const commitCycleChanges = useCallback(() => {
+    setCycleSaveStatus('saving');
+    if (cycleSaveHideRef.current) {
+      clearTimeout(cycleSaveHideRef.current);
+      cycleSaveHideRef.current = null;
+    }
+    if (cycleSyncDebounceRef.current) clearTimeout(cycleSyncDebounceRef.current);
+
+    cycleSyncDebounceRef.current = setTimeout(() => {
+      cycleSyncDebounceRef.current = null;
+      void (async () => {
+        try {
+          await pushAppStateNow();
+          setCycleSaveStatus('saved');
+          cycleSaveHideRef.current = setTimeout(() => {
+            setCycleSaveStatus('idle');
+            cycleSaveHideRef.current = null;
+          }, 2400);
+        } catch {
+          setCycleSaveStatus('error');
+          cycleSaveHideRef.current = setTimeout(() => {
+            setCycleSaveStatus('idle');
+            cycleSaveHideRef.current = null;
+          }, 3200);
+        }
+      })();
+    }, 450);
+  }, [pushAppStateNow]);
+
+  useEffect(() => {
+    return () => {
+      if (cycleSyncDebounceRef.current) clearTimeout(cycleSyncDebounceRef.current);
+      if (cycleSaveHideRef.current) clearTimeout(cycleSaveHideRef.current);
+    };
+  }, []);
+
   const touchAppStateChange = useCallback(() => {
     bumpLocalChange();
   }, [bumpLocalChange]);
@@ -1079,8 +1136,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         cycleData: patchCycleSettings(prev.cycleData, owner, patch),
       }));
+      commitCycleChanges();
     },
-    [persist]
+    [persist, commitCycleChanges]
   );
 
   const setCycleLog = useCallback(
@@ -1094,8 +1152,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           cycleData: { ...base, [owner]: nextProfile },
         };
       });
+      commitCycleChanges();
     },
-    [persist]
+    [persist, commitCycleChanges]
   );
 
   const addCustomCycleLog = useCallback(
@@ -1129,8 +1188,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           },
         };
       });
+      commitCycleChanges();
     },
-    [persist]
+    [persist, commitCycleChanges]
   );
 
   const removeCycleLog = useCallback(
@@ -1150,38 +1210,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           },
         };
       });
+      commitCycleChanges();
     },
-    [persist]
+    [persist, commitCycleChanges]
   );
 
   const markPeriodStart = useCallback(
     (owner: CycleOwner, date: string) => {
       persist((prev) => {
-        let next = patchCycleSettings(prev.cycleData, owner, { lastPeriodStart: date });
-        const base = normalizeCycleData(next);
+        const base = normalizeCycleData(prev.cycleData);
         const profile = base[owner];
-        const now = new Date().toISOString();
-        const logs = [
-          ...profile.logs.filter((l) => !(l.date === date && l.kind === 'period')),
-          {
-            id: generateId(),
-            date,
-            kind: 'period' as const,
-            value: 'medium',
-            createdAt: now,
-            updatedAt: now,
-          },
-        ];
+        const nextProfile = applyCycleLogUpdate(profile, date, 'period', 'yes', undefined, generateId);
         return {
           ...prev,
-          cycleData: {
-            ...base,
-            [owner]: { ...profile, logs, updatedAt: now },
-          },
+          cycleData: { ...base, [owner]: nextProfile },
         };
       });
+      commitCycleChanges();
     },
-    [persist]
+    [persist, commitCycleChanges]
   );
 
   const toggleCrossOffDate = useCallback(
@@ -1239,6 +1286,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       getAppStatePayload,
       touchAppStateChange,
       registerAppStatePushScheduler,
+      registerAppStatePushNow,
+      pushAppStateNow,
       getSyncMeta,
       setLastAppliedRemoteAt,
       resetSyncScope,
@@ -1264,6 +1313,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       toggleCrossOffDate,
       isDateCrossedOff,
       cycleData,
+      cycleSaveStatus,
       getCycleProfile,
       canViewCycleProfile,
       updateCycleSettings,
@@ -1302,6 +1352,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       getAppStatePayload,
       touchAppStateChange,
       registerAppStatePushScheduler,
+      registerAppStatePushNow,
+      pushAppStateNow,
       getSyncMeta,
       setLastAppliedRemoteAt,
       resetSyncScope,
@@ -1327,6 +1379,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       toggleCrossOffDate,
       isDateCrossedOff,
       cycleData,
+      cycleSaveStatus,
       getCycleProfile,
       canViewCycleProfile,
       updateCycleSettings,

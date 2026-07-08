@@ -4,11 +4,11 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import AiAgentView from '@/components/AiAgentView';
 import AiMealView from '@/components/AiMealView';
 import ChecklistListDropdown from '@/components/ChecklistListDropdown';
+import ChecklistListPicker from '@/components/ChecklistListPicker';
 import ChecklistView from '@/components/ChecklistView';
 import ExpenseflowView from '@/components/ExpenseflowView';
 import KeyDatesView from '@/components/KeyDatesView';
 import PlansHomeGrid from '@/components/PlansHomeGrid';
-import PlanSectionHeader from '@/components/PlanSectionHeader';
 import { useAppStateRemoteActions } from '@/components/AppDataSync';
 import { useReminderRemoteActions } from '@/components/ReminderSync';
 import RemindersView from '@/components/RemindersView';
@@ -18,6 +18,7 @@ import { getPlanTheme } from '@/constants/plansTheme';
 import { PLAN_CATEGORIES, Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 import { useCouple } from '@/context/CoupleContext';
+import { useOrganizerNav } from '@/context/OrganizerNavContext';
 import { PlanCategory } from '@/types';
 
 export default function PlansScreen() {
@@ -48,12 +49,14 @@ export default function PlansScreen() {
     updateKeyDate,
     deleteKeyDate,
     planItems,
+    reminders,
   } = useApp();
   const [category, setCategory] = useState<PlanCategory | null>(null);
   const [subcategoryFilter, setSubcategoryFilter] = useState('');
   const [manageSubcategories, setManageSubcategories] = useState(false);
   const [travelInDetail, setTravelInDetail] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const { setNav } = useOrganizerNav();
 
   const isHome = category === null;
   const isChecklist = category === 'weekly_checklist';
@@ -101,18 +104,79 @@ export default function PlansScreen() {
     });
   }, [allInCategory, subcategoryFilter, firstSubcategoryKey]);
 
+  const activeListLabel = subcategoryOptions.find((s) => s.key === subcategoryFilter)?.label;
+
+  const checklistListCounts = useMemo(() => {
+    if (!isChecklist) return {} as Record<string, number>;
+    const counts: Record<string, number> = {};
+    allInCategory.forEach((item) => {
+      if (item.completed || !item.subcategory) return;
+      counts[item.subcategory] = (counts[item.subcategory] ?? 0) + 1;
+    });
+    return counts;
+  }, [allInCategory, isChecklist]);
+
+  const goToOrganizer = useCallback(() => {
+    setCategory(null);
+    setSubcategoryFilter('');
+    setManageSubcategories(false);
+    setTravelInDetail(false);
+  }, []);
+
+  useEffect(() => {
+    if (isHome) {
+      setNav(null);
+      return;
+    }
+    if (isTravel && travelInDetail) {
+      setNav({
+        title: 'Trip plan',
+        subtitle: 'Travel',
+        accent: planTheme.accent,
+        onBack: () => setTravelInDetail(false),
+      });
+      return () => setNav(null);
+    }
+    if (!categoryInfo) return;
+
+    let title = categoryInfo.label;
+    let subtitle = 'Organizer';
+
+    if (isChecklist && activeListLabel) {
+      title = activeListLabel;
+      subtitle = 'Checklist';
+    } else if (usesStoreListUi && activeListLabel && subcategoryFilter) {
+      title = activeListLabel;
+      subtitle = categoryInfo.label;
+    }
+
+    setNav({
+      title,
+      subtitle,
+      accent: planTheme.accent,
+      onBack: goToOrganizer,
+    });
+
+    return () => setNav(null);
+  }, [
+    isHome,
+    isTravel,
+    travelInDetail,
+    categoryInfo,
+    isChecklist,
+    usesStoreListUi,
+    activeListLabel,
+    subcategoryFilter,
+    planTheme.accent,
+    setNav,
+    goToOrganizer,
+  ]);
+
   const handleCategoryChange = (next: PlanCategory) => {
     setCategory(next);
     setSubcategoryFilter(
       next === 'weekly_checklist' || next === 'date_ideas' || next === 'enrichment_ideas' ? '' : 'all'
     );
-  };
-
-  const goToOrganizer = () => {
-    setCategory(null);
-    setSubcategoryFilter('');
-    setManageSubcategories(false);
-    setTravelInDetail(false);
   };
 
   const handleTravelViewChange = useCallback((view: 'grid' | 'detail') => {
@@ -130,24 +194,6 @@ export default function PlansScreen() {
     }
   }, [usesStoreListUi, subcategoryOptions, subcategoryFilter]);
 
-  const sectionHint = isChecklist
-    ? 'Pick a list, add items, and check them off when done'
-    : isTravel
-    ? 'Tap a trip to organize places, packing, and budget'
-    : isReminders
-    ? 'Set shared reminders for you and your partner'
-    : isKeyDates
-    ? 'Save birthdays, anniversaries, and milestones you never want to forget'
-    : isAiAgent
-    ? 'Top-rated food, day trips, weather, stays & logistics — auto-saved to Travel Ideas'
-    : isAiMeal
-    ? 'Turn your Groceries checklist into a recipe and save it to Meals'
-    : isExpenseflow
-    ? 'Track shared expenses and settle up'
-    : usesStoreListUi
-    ? 'Pick a category, add ideas, and check them off when done'
-    : 'Add and organize your ideas';
-
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -160,25 +206,31 @@ export default function PlansScreen() {
     <View style={styles.container}>
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, !isHome && styles.scrollDrill]}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
         keyboardShouldPersistTaps="handled">
         {isHome ? (
-          <PlansHomeGrid onSelect={handleCategoryChange} />
+          <PlansHomeGrid
+            planItems={planItems}
+            reminders={reminders}
+            onSelect={handleCategoryChange}
+          />
         ) : (
           <>
-        {!(isTravel && travelInDetail) ? (
-          <PlanSectionHeader
-            category={category!}
+        {usesStoreListUi && subcategoryOptions.length > 0 && isChecklist ? (
+          <ChecklistListPicker
+            options={subcategoryOptions}
+            selected={subcategoryFilter}
+            counts={checklistListCounts}
+            onSelect={setSubcategoryFilter}
+            onManage={() => setManageSubcategories(true)}
             theme={planTheme}
-            title={categoryInfo!.label}
-            hint={sectionHint}
-            onBack={goToOrganizer}
+            manageLabel="New list"
           />
         ) : null}
 
-        {usesStoreListUi && subcategoryOptions.length > 0 && (
+        {usesStoreListUi && subcategoryOptions.length > 0 && !isChecklist ? (
           <View style={styles.checklistSections}>
             <ChecklistListDropdown
               options={subcategoryOptions}
@@ -186,12 +238,10 @@ export default function PlansScreen() {
               onSelect={setSubcategoryFilter}
               onManageLists={() => setManageSubcategories(true)}
               theme={planTheme}
-              menuTitle={isChecklist ? 'Lists' : 'Categories'}
-              manageLabel={isChecklist ? '+ Add / edit list' : '+ Add / edit category'}
-              placeholder={isChecklist ? 'Choose list' : 'Choose category'}
+              manageLabel="+ Categories"
             />
           </View>
-        )}
+        ) : null}
 
         {isReminders ? (
           <RemindersView
@@ -323,6 +373,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.background },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Theme.background },
   scroll: { padding: 20, paddingBottom: 40 },
+  scrollDrill: { paddingTop: 8 },
   checklistSections: {
     marginBottom: 4,
   },

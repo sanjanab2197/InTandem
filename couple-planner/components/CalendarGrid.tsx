@@ -158,7 +158,7 @@ function FloCycleDayContent({
   today: boolean;
   selected: boolean;
 }) {
-  const hasPeriodLog = marker?.logKinds?.includes('period') || marker?.flow;
+  const hasPeriodLog = marker?.logKinds?.includes('period');
   const isPeriod = marker?.phase === 'period' || hasPeriodLog;
   const isPredicted = !isPeriod && marker?.phase === 'predicted_period';
   const isOvulation = marker?.phase === 'ovulation';
@@ -201,6 +201,21 @@ function FloCycleDayContent({
       )}
     </View>
   );
+}
+
+function cyclePhaseStyle(phase?: CycleCalendarMarker['phase']) {
+  switch (phase) {
+    case 'period':
+      return { backgroundColor: 'rgba(217, 98, 130, 0.32)' };
+    case 'predicted_period':
+      return { backgroundColor: CYCLE_THEME.periodPredicted, borderWidth: 1, borderColor: 'rgba(217, 98, 130, 0.35)' };
+    case 'fertile':
+      return { backgroundColor: CYCLE_THEME.fertile };
+    case 'ovulation':
+      return { backgroundColor: 'rgba(135, 112, 198, 0.32)' };
+    default:
+      return null;
+  }
 }
 
 export default function CalendarGrid({

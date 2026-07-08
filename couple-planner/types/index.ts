@@ -78,7 +78,12 @@ export type StatsView = 'partner1' | 'partner2';
 
 export type CycleOwner = 'partner1' | 'partner2';
 
-export type FlowLevel = 'none' | 'spotting' | 'light' | 'medium' | 'heavy';
+export type FlowLevel = 'none' | 'yes';
+
+/** True for any logged period day (includes legacy light/medium/heavy values). */
+export function isPeriodLogged(value?: string | null): boolean {
+  return !!value && value !== 'none';
+}
 
 export type CycleLogKind =
   | 'period'
@@ -110,6 +115,8 @@ export interface CycleSettings {
   averagePeriodLength: number;
   lastPeriodStart?: string;
   shareWithPartner: boolean;
+  /** When true, manual cycle length from settings wins over learned history. */
+  useManualCycleLength?: boolean;
 }
 
 export interface CycleProfile {

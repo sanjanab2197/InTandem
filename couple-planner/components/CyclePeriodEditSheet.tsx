@@ -4,7 +4,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import DrillDownScreenHeader, { drillDownHeaderStyles } from '@/components/DrillDownScreenHeader';
-import { CYCLE_THEME, FLOW_OPTIONS } from '@/constants/cycleTracking';
+import { CYCLE_THEME } from '@/constants/cycleTracking';
 import { Theme } from '@/constants/Theme';
 import { useApp } from '@/context/AppContext';
 import { CycleOwner, FlowLevel } from '@/types';
@@ -51,7 +51,7 @@ export default function CyclePeriodEditSheet({
     if (isPeriodDay(d)) {
       setCycleLog(owner, d, 'period', 'none');
     } else {
-      setCycleLog(owner, d, 'period', 'medium');
+      setCycleLog(owner, d, 'period', 'yes');
     }
   };
 
@@ -60,7 +60,7 @@ export default function CyclePeriodEditSheet({
     if (value === 'none') {
       setCycleLog(owner, date, 'period', 'none');
     } else {
-      setCycleLog(owner, date, 'period', value);
+      setCycleLog(owner, date, 'period', 'yes');
     }
   };
 
@@ -117,21 +117,15 @@ export default function CyclePeriodEditSheet({
               <Text style={styles.startBtnText}>Period started on {format(anchor, 'MMM d')}</Text>
             </Pressable>
 
-            <Text style={styles.sectionLabel}>Flow on {format(anchor, 'MMM d')}</Text>
+            <Text style={styles.sectionLabel}>Period on {format(anchor, 'MMM d')}</Text>
             <View style={styles.flowRow}>
-              {FLOW_OPTIONS.filter((o) => o.key !== 'none').map((opt) => {
-                const selected = currentFlow === opt.key;
-                return (
-                  <Pressable
-                    key={opt.key}
-                    style={[styles.flowChip, selected && styles.flowChipOn]}
-                    onPress={() => setFlow(opt.key)}>
-                    <Text style={[styles.flowChipText, selected && styles.flowChipTextOn]}>
-                      {opt.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+              <Pressable
+                style={[styles.flowChip, currentFlow === 'yes' && styles.flowChipOn]}
+                onPress={() => setFlow('yes')}>
+                <Text style={[styles.flowChipText, currentFlow === 'yes' && styles.flowChipTextOn]}>
+                  On period
+                </Text>
+              </Pressable>
             </View>
             {currentFlow !== 'none' ? (
               <Pressable style={styles.clearBtn} onPress={() => setFlow('none')}>

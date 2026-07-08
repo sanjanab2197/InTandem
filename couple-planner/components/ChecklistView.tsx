@@ -18,6 +18,8 @@ import { PlanCategoryTheme, PlansUI } from '@/constants/plansTheme';
 import { Theme } from '@/constants/Theme';
 import { AddPlanItemInput, PlanCategory, PlanItem, PlanSubcategory } from '@/types';
 
+import DeleteIcon from '@/components/DeleteIcon';
+
 interface ChecklistViewProps {
   items: PlanItem[];
   category: PlanCategory;
@@ -36,6 +38,7 @@ interface ChecklistViewProps {
 }
 
 const SWIPE_DELETE_WIDTH = 72;
+const SWIPE_ROW_RADIUS = 14;
 
 interface StoreSwipeRowProps {
   item: PlanItem;
@@ -159,11 +162,63 @@ function StoreSwipeRow({
     onDelete();
   };
 
+  const deleteReveal = translateX.interpolate({
+    inputRange: [-SWIPE_DELETE_WIDTH, 0],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+  const deleteTintOpacity = translateX.interpolate({
+    inputRange: [-SWIPE_DELETE_WIDTH, -12, 0],
+    outputRange: [1, 0.35, 0],
+    extrapolate: 'clamp',
+  });
+  const deleteIconScale = translateX.interpolate({
+    inputRange: [-SWIPE_DELETE_WIDTH, -SWIPE_DELETE_WIDTH * 0.35, 0],
+    outputRange: [1, 0.82, 0.55],
+    extrapolate: 'clamp',
+  });
+  const deleteIconOpacity = translateX.interpolate({
+    inputRange: [-SWIPE_DELETE_WIDTH, -18, 0],
+    outputRange: [1, 0.45, 0],
+    extrapolate: 'clamp',
+  });
+
   return (
     <View style={styles.storeSwipeContainer}>
       <View style={styles.storeSwipeDelete}>
-        <Pressable style={styles.storeSwipeDeleteBtn} onPress={handleDeletePress}>
-          <Text style={styles.storeSwipeDeleteText}>Delete</Text>
+        <Animated.View
+          style={[
+            styles.storeSwipeDeleteTint,
+            { opacity: deleteTintOpacity, backgroundColor: PlansUI.deleteLight },
+          ]}
+        />
+        <Pressable
+          style={({ pressed }) => [
+            styles.storeSwipeDeleteBtn,
+            pressed && styles.storeSwipeDeleteBtnPressed,
+          ]}
+          onPress={handleDeletePress}
+          accessibilityRole="button"
+          accessibilityLabel="Delete item">
+          <Animated.View
+            style={[
+              styles.storeSwipeDeleteIconWrap,
+              { opacity: deleteIconOpacity, transform: [{ scale: deleteIconScale }] },
+            ]}>
+            <Animated.View
+              style={[
+                styles.storeSwipeDeleteCircle,
+                {
+                  backgroundColor: PlansUI.delete,
+                  opacity: deleteReveal.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.55, 1],
+                  }),
+                },
+              ]}>
+              <DeleteIcon size={17} color="#fff" />
+            </Animated.View>
+          </Animated.View>
         </Pressable>
       </View>
       <Animated.View
@@ -174,44 +229,46 @@ function StoreSwipeRow({
           { transform: [{ translateX }] },
         ]}
         {...(isEditing ? {} : panResponder.panHandlers)}>
-        <View style={[styles.storeRow, isLast && styles.storeRowLast, { borderBottomColor: Theme.border }]}>
-          <Pressable style={styles.storeCheckBtn} onPress={onToggle} hitSlop={4} disabled={isEditing}>
+        <View style={[styles.storeRow, isLast && styles.storeRowLast]}>
+          <Pressable
+            style={styles.storeRowPress}
+            onPress={onToggle}
+            onLongPress={onEditStart}
+            delayLongPress={350}
+            disabled={isEditing}>
             <View
               style={[
                 styles.storeCheck,
-                { borderColor: `${accent}66` },
+                { borderColor: `${accent}55` },
                 item.completed && { backgroundColor: accent, borderColor: accent },
-              ]}
-            />
-          </Pressable>
-          {isEditing ? (
-            <TextInput
-              style={[styles.storeEditInput, { color: Theme.text, borderColor: accent }]}
-              value={editText}
-              onChangeText={onEditTextChange}
-              autoFocus
-              selectTextOnFocus
-              placeholder="Item name"
-              placeholderTextColor={Theme.textSecondary}
-              onSubmitEditing={onEditSave}
-              onBlur={onEditSave}
-              returnKeyType="done"
-            />
-          ) : (
-            <Pressable
-              style={styles.storeTextArea}
-              onLongPress={onEditStart}
-              delayLongPress={400}>
+              ]}>
+              {item.completed ? <Text style={styles.storeCheckMark}>✓</Text> : null}
+            </View>
+            {isEditing ? (
+              <TextInput
+                style={[styles.storeEditInput, { color: Theme.text, borderColor: accent }]}
+                value={editText}
+                onChangeText={onEditTextChange}
+                autoFocus
+                selectTextOnFocus
+                placeholder="Item name"
+                placeholderTextColor={Theme.textSecondary}
+                onSubmitEditing={onEditSave}
+                onBlur={onEditSave}
+                returnKeyType="done"
+              />
+            ) : (
               <Text
                 style={[
                   styles.storeItemText,
-                  item.completed && { textDecorationLine: 'line-through', color: `${accentDark}99` },
+                  item.completed && styles.storeItemTextDone,
+                  item.completed && { color: `${accentDark}88` },
                 ]}
-                numberOfLines={2}>
+                numberOfLines={3}>
                 {item.text}
               </Text>
-            </Pressable>
-          )}
+            )}
+          </Pressable>
         </View>
       </Animated.View>
     </View>
@@ -442,27 +499,37 @@ export default function ChecklistView({
   if (isStore) {
     const canAdd = Boolean(addSubcategory);
     const progressPct = items.length ? (completed / items.length) * 100 : 0;
-    const showProgress = items.length > 0 && completed > 0;
+    const pending = items.length - completed;
 
     return (
-      <View style={embedded ? styles.storeEmbedded : [styles.storeCard, PlansUI.cardShadow]}>
-        {showProgress ? (
-          <View style={[styles.storeProgressTrack, { backgroundColor: accentLight }]}>
-            <View
-              style={[
-                styles.storeProgressFill,
-                { backgroundColor: accent, width: `${progressPct}%` },
-              ]}
-            />
+      <View style={embedded ? styles.storeEmbedded : styles.storeShell}>
+        {items.length > 0 ? (
+          <View style={styles.storeProgressRow}>
+            <View style={[styles.storeProgressTrack, { backgroundColor: accentLight }]}>
+              <View
+                style={[
+                  styles.storeProgressFill,
+                  { backgroundColor: accent, width: `${progressPct}%` },
+                ]}
+              />
+            </View>
+            <Text style={[styles.storeProgressMeta, { color: accentDark }]}>
+              {completed}/{items.length}
+            </Text>
+            {completed > 0 && onClearCompleted ? (
+              <Pressable onPress={() => onClearCompleted()} hitSlop={8}>
+                <Text style={[styles.storeClearLink, { color: accent }]}>Clear</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 
-        <View style={styles.storeAddRow}>
+        <View style={[styles.storeAddRow, { borderColor: accentLight }]}>
           <TextInput
             style={styles.storeInput}
             value={newText}
             onChangeText={setNewText}
-            placeholder="Add an item…"
+            placeholder="New item…"
             placeholderTextColor={Theme.textSecondary}
             onSubmitEditing={handleStoreAdd}
             returnKeyType="done"
@@ -476,15 +543,12 @@ export default function ChecklistView({
             ]}
             onPress={handleStoreAdd}
             disabled={!newText.trim() || !canAdd}>
-            <Text style={styles.storeAddBtnIcon}>+</Text>
+            <Text style={styles.storeAddBtnIcon}>↑</Text>
           </Pressable>
         </View>
 
         {items.length === 0 ? (
-          <View style={styles.storeEmptyWrap}>
-            <Text style={styles.storeEmptyTitle}>Nothing here yet</Text>
-            <Text style={styles.storeEmpty}>Type above to add your first item.</Text>
-          </View>
+          <Text style={styles.storeEmpty}>Add your first item above</Text>
         ) : (
           <View style={styles.storeList}>
             {storeItems.map((item, index) => (
@@ -511,19 +575,9 @@ export default function ChecklistView({
           </View>
         )}
 
-        {completed > 0 && onClearCompleted ? (
-          <Pressable
-            style={styles.clearDoneBtn}
-            onPress={() => onClearCompleted()}>
-            <Text style={[styles.clearDoneText, { color: accent }]}>
-              Clear done
-            </Text>
-          </Pressable>
-        ) : null}
-
-        {items.length > 0 ? (
-          <Text style={styles.storeHint}>
-            Tap to check off · hold to edit · swipe left to delete
+        {pending > 0 && items.length > 0 ? (
+          <Text style={styles.storeFooterMeta}>
+            {pending} left · swipe to delete · hold to rename
           </Text>
         ) : null}
       </View>
@@ -1164,69 +1218,82 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Theme.border,
   },
+  storeShell: {
+    marginTop: 4,
+  },
   storeEmbedded: {
     marginTop: 0,
   },
+  storeProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
   storeProgressTrack: {
-    height: 4,
+    flex: 1,
+    height: 3,
     borderRadius: 2,
     overflow: 'hidden',
-    marginBottom: 14,
   },
   storeProgressFill: {
     height: '100%',
     borderRadius: 2,
   },
+  storeProgressMeta: {
+    fontSize: 12,
+    fontWeight: '700',
+    minWidth: 36,
+    textAlign: 'right',
+  },
+  storeClearLink: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   storeAddRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 14,
+    gap: 8,
+    marginBottom: 12,
     alignItems: 'center',
-    borderRadius: 12,
-    padding: 4,
+    borderRadius: 14,
     paddingLeft: 14,
-    backgroundColor: Theme.background,
+    paddingRight: 6,
+    paddingVertical: 6,
+    backgroundColor: Theme.surface,
+    borderWidth: 1,
   },
   storeInput: {
     flex: 1,
     fontSize: 16,
     color: Theme.text,
-    paddingVertical: 10,
+    paddingVertical: 8,
   },
   storeAddBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   storeAddBtnIcon: {
     color: '#fff',
-    fontSize: 22,
-    fontWeight: '500',
-    lineHeight: 24,
-    marginTop: -1,
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 20,
   },
-  storeAddBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  storeEmptyWrap: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    paddingHorizontal: 16,
-  },
-  storeEmptyTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Theme.text,
-    marginBottom: 4,
+  storeEmpty: {
+    fontSize: 13,
+    color: Theme.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 28,
   },
   storeList: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: Theme.background,
+    gap: 8,
   },
   storeSwipeContainer: {
     overflow: 'hidden',
     position: 'relative',
+    borderRadius: SWIPE_ROW_RADIUS,
   },
   storeSwipeDelete: {
     position: 'absolute',
@@ -1234,62 +1301,85 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     width: SWIPE_DELETE_WIDTH,
-    backgroundColor: PlansUI.delete,
     justifyContent: 'center',
     alignItems: 'center',
+    borderTopRightRadius: SWIPE_ROW_RADIUS,
+    borderBottomRightRadius: SWIPE_ROW_RADIUS,
+    overflow: 'hidden',
+  },
+  storeSwipeDeleteTint: {
+    ...StyleSheet.absoluteFillObject,
+    borderTopRightRadius: SWIPE_ROW_RADIUS,
+    borderBottomRightRadius: SWIPE_ROW_RADIUS,
   },
   storeSwipeDeleteBtn: {
+    flex: 1,
     width: '100%',
-    height: '100%',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  storeSwipeDeleteText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
+  storeSwipeDeleteBtnPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.94 }],
+  },
+  storeSwipeDeleteIconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storeSwipeDeleteCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: PlansUI.delete,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.28,
+    shadowRadius: 4,
+    elevation: 2,
   },
   storeSwipeForeground: {
-    backgroundColor: Theme.surface,
+    borderRadius: SWIPE_ROW_RADIUS,
+    borderWidth: 1,
+    borderColor: Theme.border,
   },
   storeRow: {
+    minHeight: 52,
+  },
+  storeRowLast: {},
+  storeRowPress: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingLeft: 14,
-    paddingRight: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  storeRowLast: {
-    borderBottomWidth: 0,
-  },
-  storeCheckBtn: {
     paddingVertical: 12,
-    paddingRight: 14,
+    paddingHorizontal: 14,
+    gap: 12,
+    minHeight: 52,
   },
-  storeTextArea: {
-    flex: 1,
+  storeCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    flexShrink: 0,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    minWidth: 0,
+  },
+  storeCheckMark: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 14,
   },
   storeEditInput: {
     flex: 1,
     fontSize: 16,
     lineHeight: 22,
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1.5,
     backgroundColor: Theme.surface,
     minWidth: 0,
-  },
-  storeCheck: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    flexShrink: 0,
   },
   storeItemText: {
     flex: 1,
@@ -1297,27 +1387,14 @@ const styles = StyleSheet.create({
     color: Theme.text,
     lineHeight: 22,
   },
-  storeEmpty: {
-    fontSize: 14,
-    color: Theme.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
+  storeItemTextDone: {
+    textDecorationLine: 'line-through',
   },
-  storeHint: {
+  storeFooterMeta: {
     fontSize: 11,
     color: Theme.textSecondary,
     textAlign: 'center',
-    marginTop: 14,
-    opacity: 0.8,
-    letterSpacing: 0.2,
-  },
-  clearDoneBtn: {
-    marginTop: 14,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  clearDoneText: {
-    fontSize: 14,
-    fontWeight: '600',
+    marginTop: 12,
+    opacity: 0.85,
   },
 });

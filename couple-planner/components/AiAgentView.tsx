@@ -198,7 +198,7 @@ export default function AiAgentView({ theme, onAddToTravel, onOpenTravel, onSave
             ]
           : [{ text: 'OK' }]
       );
-      void persistItinerary(itinerary, resolvedTripName);
+      await persistItinerary(itinerary, resolvedTripName);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Something went wrong.';
       Alert.alert('Could not generate', message);
